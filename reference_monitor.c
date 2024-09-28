@@ -39,11 +39,17 @@ MODULE_DESCRIPTION("reference monitor service");
 #define NO (0)
 #define YES (NO + 1)
 
+#define MAX_PASSWD_LENGHT 50
+
 // -------------------------- MODULE PARAMETERS --------------------------
 
 unsigned long the_syscall_table = 0x0;
 module_param(the_syscall_table, ulong, 0660);
 MODULE_PARM_DESC(the_syscall_table, "Retrieved syscall table address through the_usctm module");
+
+unsigned char the_password[MAX_PASSWD_LENGHT];
+module_param_string(the_password, the_password, MAX_PASSWD_LENGHT, 0);
+MODULE_PARM_DESC(the_password, "Password required to use the reference monitor");
 
 // -------------------------- MODULE VARIABLES --------------------------
 
