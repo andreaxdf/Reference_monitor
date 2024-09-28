@@ -47,9 +47,9 @@ MODULE_PARM_DESC(the_syscall_table, "Retrieved syscall table address through the
 
 // -------------------------- MODULE VARIABLES --------------------------
 
+unsigned long new_sys_call_array[] = {0x0}; // It will set to the syscalls at startup
 #define HACKED_ENTRIES (int)(sizeof(new_sys_call_array) / sizeof(unsigned long))
 int restore[HACKED_ENTRIES] = {[0 ...(HACKED_ENTRIES - 1)] - 1};
-unsigned long new_sys_call_array[] = {0x0}; // It will set to the syscalls at startup
 
 unsigned long the_ni_syscall;
 
