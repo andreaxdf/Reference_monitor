@@ -1,6 +1,5 @@
 
-typedef enum _state
-{
+typedef enum _state {
     ON,
     OFF,
     REC_ON,

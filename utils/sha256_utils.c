@@ -5,10 +5,12 @@
  *
  * @param data Pointer to the data to hash.
  * @param datalen Length of the data to hash.
- * @param digest Buffer to store the resulting hash; must be at least SHA256_DIGEST_SIZE bytes.
+ * @param digest Buffer to store the resulting hash; must be at least
+ * SHA256_DIGEST_SIZE bytes.
  * @return 0 on success, negative error code on failure.
  */
-int compute_crypto_digest(const unsigned char *data, unsigned int datalen, unsigned char *digest) {
+int compute_crypto_digest(const unsigned char *data, unsigned int datalen,
+                          unsigned char *digest) {
     struct crypto_shash *alg;
     struct shash_desc *shash;
     int size, ret;
@@ -37,9 +39,11 @@ int compute_crypto_digest(const unsigned char *data, unsigned int datalen, unsig
  * @param password Pointer to the password to verify.
  * @param passlen Length of the password.
  * @param expected_hash Expected SHA256 hash to compare against.
- * @return 0 if the password matches the expected hash, -EINVAL if not, or another negative error code on failure.
+ * @return 0 if the password matches the expected hash, -EINVAL if not, or
+ * another negative error code on failure.
  */
-int verify_password(const unsigned char *password, unsigned int passlen, const unsigned char *expected_hash) {
+int verify_password(const unsigned char *password, unsigned int passlen,
+                    const unsigned char *expected_hash) {
     int ret;
 
     unsigned char *computed_hash = kmalloc(SHA256_DIGEST_SIZE, GFP_KERNEL);

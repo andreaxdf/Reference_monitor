@@ -27,6 +27,4 @@ void print_message(const char *fmt, ...) {
     }
 }
 
-bool isRoot() {
-    return current_euid == 0;
-}
+bool isRoot() { return current_euid == 0; }
