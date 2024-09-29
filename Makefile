@@ -1,8 +1,8 @@
 obj-m += the_reference_monitor.o
-the_reference_monitor-objs += reference_monitor.o lib/scth.o
+the_reference_monitor-objs += reference_monitor.o lib/scth.o utils/sha256_utils.o
 
 SYS_CALL_TABLE = $(shell sudo cat /sys/module/the_usctm/parameters/sys_call_table_address)
-PASSWORD = $(shell sudo cat ./password)
+PASSWORD = $(shell cat ./password)
 
 
 all: compile mount

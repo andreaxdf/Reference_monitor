@@ -29,6 +29,8 @@
 #include <linux/string.h>
 #include <linux/syscalls.h>
 #include "lib/include/scth.h"
+#include "utils/utils.h"
+#include "utils/sha256_utils.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Andrea De Filippis");
@@ -48,7 +50,8 @@ module_param(the_syscall_table, ulong, 0660);
 MODULE_PARM_DESC(the_syscall_table, "Retrieved syscall table address through the_usctm module");
 
 unsigned char the_password[MAX_PASSWD_LENGHT];
-module_param_string(the_password, the_password, MAX_PASSWD_LENGHT, 0);
+unsigned char password_digest[SHA256_DIGEST_SIZE];
+module_param_string(the_password, the_password, MAX_PASSWD_LENGHT, 0); // This parameter cannot be accessed via vfs
 MODULE_PARM_DESC(the_password, "Password required to use the reference monitor");
 
 // -------------------------- MODULE VARIABLES --------------------------
@@ -78,11 +81,6 @@ asmlinkage long sys_sem_lock(int tokens)
 long sys_sem_lock = (unsigned long)__x64_sys_sem_lock;
 #endif
 
-/**
- * @brief
- *
- * @return int
- */
 int init_module(void)
 {
 
@@ -122,12 +120,20 @@ int init_module(void)
 
     printk("%s: all new system-calls correctly installed on sys-call table\n", MODNAME);
 
+    ret = compute_crypto_digest(the_password, strlen(the_password), password_digest);
+    if (ret)
+    {
+        printk("%s: password encryption failed\n", MODNAME);
+        return ret;
+    }
+
+    printk("%s: password digest computed\n", MODNAME);
+
     return 0;
 }
 
 void cleanup_module(void)
 {
-
     int i;
 
     printk("%s: shutting down\n", MODNAME);
