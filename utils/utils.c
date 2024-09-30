@@ -23,8 +23,8 @@ void print_message(const char *fmt, ...) {
         printk("%s", log_msg);
         kfree(log_msg);
     } else {
-        printk("%s%s: Log message allocation failed\n", log_level_str, MODNAME);
+        printk("%s: Log message allocation failed\n", MODNAME);
     }
 }
 
-bool isRoot() { return current_euid == 0; }
+bool isRoot(void) { return CURRENT_EUID == 0; }

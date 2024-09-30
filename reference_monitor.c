@@ -21,6 +21,7 @@
 #include <linux/namei.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/syscalls.h>
 #include <linux/time.h>
@@ -59,6 +60,14 @@ module_param_string(the_password, the_password, MAX_PASSWD_LENGHT,
 MODULE_PARM_DESC(the_password,
                  "Password required to use the reference monitor");
 
+// -------------------------- MODULE STRUCTURES -------------------------
+
+typedef struct _reference_monitor {
+    state state;
+    spinlock_t monitor_lock;
+
+} reference_monitor;
+
 // -------------------------- MODULE VARIABLES --------------------------
 
 unsigned long new_sys_call_array[] = {
@@ -68,11 +77,7 @@ int restore[HACKED_ENTRIES] = {[0 ...(HACKED_ENTRIES - 1)] - 1};
 
 unsigned long the_ni_syscall;
 
-typedef struct _reference_monitor {
-    state monitor_state = ;
-    spinlock_t monitor_lock;
-
-} reference_monitor;
+reference_monitor monitor;
 
 // -------------------------- MODULE SYSCALLS --------------------------
 
@@ -83,10 +88,16 @@ typedef struct _reference_monitor {
  * OFF, REC-ON or REC-OFF.
  */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
-__SYSCALL_DEFINEx(2, _change_monitor_state, int, new_state) {
+__SYSCALL_DEFINEx(1, _change_monitor_state, int, new_state) {
+// __SYSCALL_DEFINEx(1, _change_monitor_state, int, new_state) {
 #else
-asmlinkage long sys_change_monitor_state(int new_state) {
+asmlinkage long sys_change_monitor_state() {
+// asmlinkage long sys_change_monitor_state(int new_state) {
 #endif
+
+    // AUDIT
+    printk("%s: request for change of status to the state %d\n", MODNAME,
+           new_state);
 
     // If the thread is not root, return permission error
     if (!isRoot()) {
@@ -95,18 +106,20 @@ asmlinkage long sys_change_monitor_state(int new_state) {
         return -EPERM;
     }
 
-    switch (new_state) {
-        case ON:
-            break;
-        case OFF:
-            break;
-        case REC_ON:
-            break;
-        case REC_OFF:
-            break;
-        default:
-            return -EINVAL;
+    // Check if the argument is a valid state
+    if (!isAValidState(new_state)) {
+        printk("%s: invalid state (%d)\n", MODNAME, new_state);
+        return -EINVAL;
     }
+
+    spin_lock(&monitor.monitor_lock);
+
+    monitor.state = new_state;
+
+    spin_unlock(&monitor.monitor_lock);
+
+    AUDIT
+    printk("%s: state successfully changed to %d\n", MODNAME, new_state);
 
     return 0;
 }
@@ -154,6 +167,14 @@ int init_module(void) {
 
     printk("%s: all new system-calls correctly installed on sys-call table\n",
            MODNAME);
+
+    // VARIABLES INITIALIZATION
+
+    monitor.state = REC_ON;
+
+    spin_lock_init(&monitor.monitor_lock);
+
+    // PASSWORD ENCRYPTION
 
     ret = compute_crypto_digest(the_password, strlen(the_password),
                                 password_digest);

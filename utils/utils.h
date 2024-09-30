@@ -1,7 +1,6 @@
 #ifndef GENERAL_UTILS_H
 #define GENERAL_UTILS_H
 
-#include <linux/cred.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -11,9 +10,10 @@
 
 #define MODNAME "REFERENCE_MONITOR"
 #define MAX_LOGMSG_LEN 256
+#define CURRENT_EUID current_cred()->euid.val
 
 void print_message(const char *fmt, ...);
 
-bool isRoot();
+bool isRoot(void);
 
 #endif
