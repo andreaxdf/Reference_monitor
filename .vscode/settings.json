@@ -4,7 +4,8 @@
         "module.h": "c",
         "fs.h": "c",
         "errno.h": "c",
-        "sha256_utils.h": "c"
+        "sha256_utils.h": "c",
+        "time.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

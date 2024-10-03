@@ -89,13 +89,11 @@ reference_monitor monitor;
  */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
 __SYSCALL_DEFINEx(1, _change_monitor_state, int, new_state) {
-// __SYSCALL_DEFINEx(1, _change_monitor_state, int, new_state) {
 #else
-asmlinkage long sys_change_monitor_state() {
-// asmlinkage long sys_change_monitor_state(int new_state) {
+asmlinkage long sys_change_monitor_state(int new_state) {
 #endif
 
-    // AUDIT
+    AUDIT
     printk("%s: request for change of status to the state %d\n", MODNAME,
            new_state);
 
@@ -140,7 +138,7 @@ int init_module(void) {
 
     AUDIT {
         printk("%s: queuing example received sys_call_table address %px\n",
-               MODNAME, (void*)the_syscall_table);
+               MODNAME, (void *)the_syscall_table);
         printk("%s: initializing - hacked entries %d\n", MODNAME,
                HACKED_ENTRIES);
     }
@@ -148,7 +146,7 @@ int init_module(void) {
     new_sys_call_array[0] = (unsigned long)sys_change_monitor_state;
 
     ret = get_entries(restore, HACKED_ENTRIES,
-                      (unsigned long*)the_syscall_table, &the_ni_syscall);
+                      (unsigned long *)the_syscall_table, &the_ni_syscall);
 
     if (ret != HACKED_ENTRIES) {
         printk("%s: could not hack %d entries (just %d)\n", MODNAME,
@@ -159,7 +157,7 @@ int init_module(void) {
     unprotect_memory();
 
     for (i = 0; i < HACKED_ENTRIES; i++) {
-        ((unsigned long*)the_syscall_table)[restore[i]] =
+        ((unsigned long *)the_syscall_table)[restore[i]] =
             (unsigned long)new_sys_call_array[i];
     }
 
@@ -195,7 +193,7 @@ void cleanup_module(void) {
 
     unprotect_memory();
     for (i = 0; i < HACKED_ENTRIES; i++) {
-        ((unsigned long*)the_syscall_table)[restore[i]] = the_ni_syscall;
+        ((unsigned long *)the_syscall_table)[restore[i]] = the_ni_syscall;
     }
     protect_memory();
     printk("%s: sys-call table restored to its original content\n", MODNAME);
