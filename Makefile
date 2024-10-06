@@ -68,5 +68,6 @@ unmount:
 	-sudo rmmod ./the_usctm/the_usctm.ko
 	-sudo rmmod the_reference_monitor.ko
 	-$(MAKE) unmount_fs
+	-sudo rmmod ./singlefile-FS/singlefilefs.ko
 
 	@echo "\nMODULES UNMOUNTED!\n"

@@ -5,7 +5,10 @@
         "fs.h": "c",
         "errno.h": "c",
         "sha256_utils.h": "c",
-        "time.h": "c"
+        "time.h": "c",
+        "version.h": "c",
+        "utils.h": "c",
+        "state.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

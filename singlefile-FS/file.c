@@ -29,6 +29,7 @@ static ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
 
     loff_t block_offset;  // offset inside the chosen block
     int block_to_write;   // index to the block to be written
+    size_t copiedBytes;
 
     loff_t file_size = i_size_read(inode);
 
@@ -48,9 +49,9 @@ static ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
 
     // Copy data from iov_iter to the block buffer. Notice the change here from
     // copy_from_user.
-    size_t copied =
+    copiedBytes =
         copy_from_iter(bh->b_data + block_offset, free_bytes_in_block, from);
-    if (copied != free_bytes_in_block) {
+    if (copiedBytes != free_bytes_in_block) {
         brelse(bh);  // Release the buffer head.
         return -EFAULT;
     }
@@ -62,13 +63,13 @@ static ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
 
     // Update file size in the inode
     i_size_write(inode, file_size + len);
-    inode->i_size += copied;
+    inode->i_size += copiedBytes;
     mark_inode_dirty(inode);  // Mark the inode as dirty, so it will be written
                               // back to the disk
-    iocb->ki_pos += copied;   // Even if we're appending, it's good practice to
-                              // update ki_pos.
+    iocb->ki_pos += copiedBytes;  // Even if we're appending, it's good practice
+                                  // to update ki_pos.
 
-    return copied;
+    return copiedBytes;
 }
 
 static ssize_t onefilefs_read(struct file *filp, char __user *buf, size_t len,
