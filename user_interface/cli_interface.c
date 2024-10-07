@@ -1,89 +1,114 @@
-#include <bool.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
 
+#include "user_utils/include/action.h"
+#include "user_utils/include/state.h"
+#include "user_utils/include/utils.h"
+
 #define RED "\x1B[31m"
+#define PASSWORD "password"
 
-typedef enum _action {
-    SHOW_STATE,
-    CHANGE_STATE,
-    ADD_PATH,
-    REMOVE_PATH,
+int sys_change_monitor_state = 0;
+int sys_show_monitor_state = 0;
+int sys_add_remove_protected_path = 0;
 
-    LAST_ENTRY
-} action;
-
-char *action_to_string(action chosen_action) {
-    switch (chosen_action) {
-        case SHOW_STATE:
-            return "Show monitor state";
-        case CHANGE_STATE:
-            return "Change monitor state";
-        case ADD_PATH:
-            return "Add a new path to protect";
-        case REMOVE_PATH:
-            return "Remove a protected path";
-        default:
-            return NULL;
-    }
+void print_operation_result(int ret) {
+    if (ret == 0)
+        printf("Operation successfully executed.\n");
+    else
+        printf("Operation failed. error = %s\n", strerror(errno));
 }
 
-bool is_action_valid(action action) { return action < LAST_ENTRY; }
+void show_state() {
+    get_syscall_number_from_user(&sys_show_monitor_state,
+                                 "sys_show_monitor_state");
 
-void print_options() {
-    printf("\n");
+    int ret = syscall(sys_show_monitor_state, PASSWORD);
 
-    for (int i = 0; i < LAST_ENTRY; i++) {
-        printf("%d - %s\n", i, action_to_string(i));
-    }
-
-    printf("\n");
+    print_operation_result(ret);
 }
 
-action get_user_action() {
-    action input_action;
+void change_state() {
+    state new_state;
 
-    print_options();
+    get_syscall_number_from_user(&sys_change_monitor_state,
+                                 "sys_change_monitor_state");
 
-    while (true) {
-        char buffer[10];
-        printf("Enter action number: ");
-        while (fgets(buffer, sizeof(buffer), stdin) == NULL) {
-            printf("Invalid input\n");
-        }
+    printf("Enter one of the following state:\n");
 
-        input_action = strtol(buffer, NULL, 10);
+    new_state = get_state_from_user();
 
-        if (is_action_valid(input_action)) {
-            break;
-        }
-    }
+    int ret = syscall(sys_change_monitor_state, PASSWORD, new_state);
 
-    return (action)input_action;
+    print_operation_result(ret);
+}
+
+void add_path() {
+    char path[512];
+
+    get_syscall_number_from_user(&sys_add_remove_protected_path,
+                                 "sys_add_remove_protected_path");
+
+    get_string_from_user(path, 512,
+                         YELLOW "Enter the path you want to protect: " RESET);
+    remove_new_line(path);
+
+    printf("Adding %s...\n", path);
+
+    int ret = syscall(sys_add_remove_protected_path, PASSWORD, path, 0 /*ADD*/);
+
+    print_operation_result(ret);
+}
+
+void remove_path() {
+    char path[512];
+
+    get_syscall_number_from_user(&sys_add_remove_protected_path,
+                                 "sys_add_remove_protected_path");
+
+    get_string_from_user(path, 512,
+                         YELLOW "Enter the path you want to protect: " RESET);
+    remove_new_line(path);
+
+    printf("Removing %s...\n", path);
+
+    int ret =
+        syscall(sys_add_remove_protected_path, PASSWORD, path, 1 /*REMOVE*/);
+
+    print_operation_result(ret);
 }
 
 int main() {
-    int syscall_number;
-    char buffer[100];
+    action user_action;
 
-    printf("Enter the syscall number: ");
-    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
-        printf("Your input: %s");
+    while (true) {
+        user_action = get_action_from_user();
+
+        switch (user_action) {
+            case SHOW_STATE:
+                show_state();
+                break;
+            case CHANGE_STATE:
+                change_state();
+                break;
+            case ADD_PATH:
+                add_path();
+                break;
+            case REMOVE_PATH:
+                remove_path();
+                break;
+            case EXIT:
+                return 0;
+            default:
+                break;
+        }
     }
-
-    int ret = syscall(syscall_number, param1, param2);
-    if (ret != 0) {
-        printf(RED "Syscall failed = %d. errno = %d: %s\n", ret, errno,
-               strerror(errno));
-        return 1;
-    }
-
-    printf("Syscall %d executed with ret=%d\n", syscall_, ret);
 
     return 0;
 }
