@@ -82,7 +82,7 @@ enum mode {
 // -------------------------- MODULE VARIABLES --------------------------
 
 unsigned long new_sys_call_array[] = {
-    0x0, 0x0};  // It will set to the syscalls at startup
+    0x0, 0x0, 0x0};  // It will set to the syscalls at startup
 #define HACKED_ENTRIES (int)(sizeof(new_sys_call_array) / sizeof(unsigned long))
 int restore[HACKED_ENTRIES] = {[0 ...(HACKED_ENTRIES - 1)] - 1};
 
@@ -269,16 +269,15 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
 
     k_path_str = get_user_string(input_path, PATH_MAX);
     if (IS_ERR(k_path_str)) {
-        printk(KERN_ERR "%s: Failed to resolve path: %s\n", MODNAME,
-               input_path);
+        printk(KERN_ERR "%s: Failed to resolve path.\n", MODNAME);
         return -EINVAL;
     }
 
     if ((ret = kern_path(k_path_str, LOOKUP_FOLLOW, &k_path)) != 0) {
         if (ret == -ENOENT) {
             // Path does not exist
-            printk(KERN_ERR "%s: The input path does not exist: %s.\n", MODNAME,
-                   input_path);
+            printk(KERN_ERR "%s: The input path does not exist: '%s'.\n",
+                   MODNAME, k_path_str);
             return -EINVAL;
         } else if (ret == -EACCES) {
             // The program does not have the permission to access the path
@@ -286,8 +285,8 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
                    MODNAME);
             return -EPERM;
         } else {
-            printk(KERN_ERR "%s: Failed to resolve path: %s\n", MODNAME,
-                   input_path);
+            printk(KERN_ERR "%s: Failed to resolve path '%s'\n", MODNAME,
+                   k_path_str);
             return -EINVAL;
         }
     }
@@ -366,9 +365,10 @@ int init_module(void) {
                HACKED_ENTRIES);
     }
 
-    // Remember to update the array size
+    // REMEMBER to update the array size
     new_sys_call_array[0] = (unsigned long)sys_change_monitor_state;
     new_sys_call_array[1] = (unsigned long)sys_show_monitor_state;
+    new_sys_call_array[2] = (unsigned long)sys_add_remove_protected_path;
 
     ret = get_entries(restore, HACKED_ENTRIES,
                       (unsigned long *)the_syscall_table, &the_ni_syscall);
@@ -394,6 +394,8 @@ int init_module(void) {
     printk("%s: sys_change_monitor_state installed on %d\n", MODNAME,
            restore[0]);
     printk("%s: sys_show_monitor_state installed on %d\n", MODNAME, restore[1]);
+    printk("%s: sys_add_remove_protected_path installed on %d\n", MODNAME,
+           restore[2]);
 
     // VARIABLES INITIALIZATION
 

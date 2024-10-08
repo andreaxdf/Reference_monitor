@@ -29,7 +29,9 @@ clean_compile:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	-rm onefilemakefs
+	-rm singlefilemakefs
+	-rmdir $(LOG_DIRECTORY_PATH)
+	-rm image
 
 	@echo "\nCOMPILED CLEANED!\n"
 
