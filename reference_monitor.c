@@ -240,9 +240,9 @@ asmlinkage long sys_show_monitor_state(char __user *input_password) {
         pathname = d_path(&(entry->actual_path), buff, PAGE_SIZE);
 
         if (IS_ERR(pathname))
-            printk("\t error converting a path to string\n");
+            printk("\t\t\t error converting a path to string\n");
         else
-            printk("\t %s\n", pathname);
+            printk("\t\t\t %s\n", pathname);
 
         free_page((unsigned long)buff);
     }
@@ -263,10 +263,20 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
     int ret;
     protected_path *new_path;
 
+    // Check password and permission
     if ((ret = checkPasswordAndPermission(input_password, MAX_PASSWD_LENGHT)) !=
         0)
         return ret;
 
+    // Check if the monitor allows changes
+    if (!(ref_monitor.state == REC_ON || ref_monitor.state == REC_OFF)) {
+        printk(KERN_ERR
+               "%s: The reference monitor is in an unmodifiable state: %s.\n",
+               MODNAME, state_to_string(ref_monitor.state));
+        return -EPERM;
+    }
+
+    // Retrieve input_path
     k_path_str = get_user_string(input_path, PATH_MAX);
     if (IS_ERR(k_path_str)) {
         printk(KERN_ERR "%s: Failed to resolve path.\n", MODNAME);
@@ -293,6 +303,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
 
     switch (input_mode) {
         case ADD:
+            // Add the path to the protected ones
             AUDIT
             printk(KERN_INFO "%s: Adding a protected path...\n", MODNAME);
 
@@ -315,7 +326,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
 
             return 0;
         case REMOVE:
-
+            // Remove the path from the protected ones
             AUDIT
             printk(KERN_INFO "%s: removing a protected path...\n", MODNAME);
 
