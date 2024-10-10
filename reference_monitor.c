@@ -33,6 +33,7 @@
 #include "lib/include/scth.h"
 #include "utils/include/constants.h"
 #include "utils/include/intrusion_log.h"
+#include "utils/include/reference_monitor_state.h"
 #include "utils/include/sha256_utils.h"
 #include "utils/include/state.h"
 #include "utils/include/utils.h"
@@ -41,7 +42,6 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Andrea De Filippis");
 MODULE_DESCRIPTION("reference monitor service");
 
-#define MODNAME "REFERENCE_MONITOR"
 #define AUDIT if (1)
 #define NO (0)
 #define YES (NO + 1)
@@ -62,18 +62,6 @@ MODULE_PARM_DESC(the_password,
 
 // -------------------------- MODULE STRUCTURES -------------------------
 
-typedef struct _protected_path {
-    struct path actual_path;
-    // struct inode *inode;     //TODO do I need to save the inode?
-    struct list_head list;
-} protected_path;
-
-struct reference_monitor {
-    state state;
-    struct list_head protected_paths;
-    spinlock_t monitor_lock;
-};
-
 enum mode {
     ADD,
     REMOVE,
@@ -87,8 +75,6 @@ unsigned long new_sys_call_array[] = {
 int restore[HACKED_ENTRIES] = {[0 ...(HACKED_ENTRIES - 1)] - 1};
 
 unsigned long the_ni_syscall;
-
-struct reference_monitor ref_monitor;
 
 // -------------------------- MODULE FUNCTIONS -------------------------
 
@@ -127,52 +113,6 @@ static int checkPasswordAndPermission(char __user *input_password,
     }
 
     return 0;
-}
-
-/**
- * @brief Checks if the path is already protected. NB: remember to release the
- * path, if you need it.
- *
- * @param kern_path: path to check
- * @return true if the path is already in the list, false otherwise
- */
-static bool is_path_already_protected(struct path kern_path) {
-    protected_path *entry;
-
-    list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
-        // Check if the dentry and the path already exist in the list
-        if (kern_path.dentry == entry->actual_path.dentry &&
-            kern_path.mnt == entry->actual_path.mnt) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
- * @brief Removes the input path from the protected path list, if it exists.
- *
- * @param kern_path: path to remove.
- * @return if the path was removed or not found
- */
-static bool remove_protected_path(struct path kern_path) {
-    protected_path *entry, *tmp;
-
-    // Iterate over the list to find the path
-    // Using the safe version since we must modify the list
-    list_for_each_entry_safe(entry, tmp, &ref_monitor.protected_paths, list) {
-        if (kern_path.dentry == entry->actual_path.dentry &&
-            kern_path.mnt == entry->actual_path.mnt) {
-            // Remove the item from the list
-            list_del(&entry->list);
-
-            // Free the memory
-            kfree(entry);
-            return true;
-        }
-    }
-
-    return false;
 }
 
 /**
@@ -236,12 +176,7 @@ asmlinkage long sys_change_monitor_state(char __user *input_password,
         return -EINVAL;
     }
 
-    spin_lock(&ref_monitor.monitor_lock);
-
-    old_state = ref_monitor.state;
-    ref_monitor.state = new_state;
-
-    spin_unlock(&ref_monitor.monitor_lock);
+    old_state = change_monitor_state((state)new_state);
 
     AUDIT
     printk("%s: state successfully changed from %s to %s\n", MODNAME,
@@ -255,24 +190,13 @@ __SYSCALL_DEFINEx(1, _show_monitor_state, char __user *, input_password) {
 #else
 asmlinkage long sys_show_monitor_state(char __user *input_password) {
 #endif
-    protected_path *entry;
-    char *buff, *pathname;
+    int ret;
 
-    printk("%s: Monitor state: %s\n", MODNAME,
-           state_to_string(ref_monitor.state));
-    printk("%s: The following paths are being protected:\n", MODNAME);
+    if ((ret = checkPasswordAndPermission(input_password, MAX_PASSWD_LENGHT)) !=
+        0)
+        return ret;
 
-    list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
-        buff = (char *)__get_free_page(GFP_KERNEL);
-        pathname = d_path(&(entry->actual_path), buff, PAGE_SIZE);
-
-        if (IS_ERR(pathname))
-            printk("\t\t\t error converting a path to string\n");
-        else
-            printk("\t\t\t %s\n", pathname);
-
-        free_page((unsigned long)buff);
-    }
+    print_monitor_state();
 
     return 0;
 }
@@ -288,20 +212,11 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
     char *k_path_str;
     struct path k_path;
     int ret;
-    protected_path *new_path;
 
     // Check password and permission
     if ((ret = checkPasswordAndPermission(input_password, MAX_PASSWD_LENGHT)) !=
         0)
         return ret;
-
-    // Check if the monitor allows changes
-    if (!(ref_monitor.state == REC_ON || ref_monitor.state == REC_OFF)) {
-        printk(KERN_ERR
-               "%s: The reference monitor is in an unmodifiable state: %s.\n",
-               MODNAME, state_to_string(ref_monitor.state));
-        return -EPERM;
-    }
 
     // Retrieve input_path
     k_path_str = get_user_string(input_path, PATH_MAX);
@@ -331,48 +246,68 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
         }
     }
 
+    ret = 0;
+
     switch (input_mode) {
         case ADD:
             // Add the path to the protected ones
             AUDIT
             printk(KERN_INFO "%s: Adding a protected path...\n", MODNAME);
 
-            if (is_path_already_protected(k_path) == true) {
+            ret = add_protected_path(k_path);
+            if (ret == 1) {
+                // PATH ALREADY EXISTS
                 printk(KERN_INFO "%s: Path is already protected.\n", MODNAME);
-                kfree(k_path_str);
-
-                return 0;
+                ret = 0;  // Path is already protected, so no problem. This
+                          // operation is useless since ret is already 0, but it
+                          // makes more clear the code.
+                break;
+            } else if (ret == -1) {
+                // KMALLOC ERROR
+                printk(KERN_ERR
+                       "%s: Impossible to allocate a buffer for the new path.",
+                       MODNAME);
+                break;
+            } else if (ret == -2) {
+                // MONITOR NOT RECONFIGURABLE
+                printk(KERN_ERR
+                       "%s: The reference monitor is in an unmodifiable state: "
+                       "%s.\n",
+                       MODNAME, state_to_string(get_monitor_state()));
+                ret = -EPERM;
+                break;
             }
 
-            new_path = kmalloc(sizeof(protected_path), GFP_KERNEL);
-
-            // Copying the path struct -> no out of scope problems should be met
-            new_path->actual_path = k_path;
-            // new_path->inode = k_path.dentry->d_inode;
-            INIT_LIST_HEAD(&(new_path->list));
-
-            list_add(&(new_path->list), &ref_monitor.protected_paths);
-
             AUDIT
-            printk(KERN_INFO "%s: New path added: %s.\n", MODNAME, k_path_str);
+            printk(KERN_INFO "%s: Path successfully added: %s.\n", MODNAME,
+                   k_path_str);
 
             break;
         case REMOVE:
             // Remove the path from the protected ones
             AUDIT
-            printk(KERN_INFO "%s: removing a protected path...\n", MODNAME);
+            printk(KERN_INFO "%s: Removing a protected path...\n", MODNAME);
 
-            if (remove_protected_path(k_path) == false) {
-                printk(KERN_ERR "%s: Failed to delete the path: %s\n", MODNAME,
-                       k_path_str);
-                printk(KERN_ERR "%s: Is the path protected?\n", MODNAME);
-                kfree(k_path_str);
-
-                return -EINVAL;
+            ret = remove_protected_path(k_path);
+            if (ret == -1) {
+                // NOT FOUND
+                printk(KERN_ERR
+                       "%s: Path not found. Is the path protected? Path: %s",
+                       MODNAME, k_path_str);
+                break;
+            } else if (ret == -2) {
+                // MONITOR NOT RECONFIGURABLE
+                printk(KERN_ERR
+                       "%s: The reference monitor is in an unmodifiable state: "
+                       "%s.\n",
+                       MODNAME, state_to_string(get_monitor_state()));
+                ret = -EPERM;
+                break;
             }
 
             AUDIT
-            printk(KERN_INFO "%s: Path deleted.\n", MODNAME);
+            printk(KERN_INFO "%s: Path successfully deleted: %s\n", MODNAME,
+                   k_path_str);
 
             break;
         default:
@@ -380,13 +315,13 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
                    "%s: The input mode is invalid. Use the mode enum to "
                    "choose ADD or REMOVE.\n",
                    MODNAME);
-            kfree(k_path_str);
-            return -EINVAL;
+            ret = -EINVAL;
+            break;
     }
 
     kfree(k_path_str);
 
-    return 0;
+    return ret;
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
@@ -445,13 +380,9 @@ int init_module(void) {
     printk("%s: sys_add_remove_protected_path installed on %d\n", MODNAME,
            restore[2]);
 
-    // VARIABLES INITIALIZATION
+    // VARIABLE INITIALIZATION
 
-    ref_monitor.state = REC_ON;  // REC_ON as default to configure the monitor
-
-    INIT_LIST_HEAD(&ref_monitor.protected_paths);
-
-    spin_lock_init(&ref_monitor.monitor_lock);
+    initialize_monitor_state();
 
     // PASSWORD ENCRYPTION
 
