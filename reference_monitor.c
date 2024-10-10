@@ -32,7 +32,7 @@
 
 #include "lib/include/scth.h"
 #include "utils/include/constants.h"
-#include "utils/include/intrusion_log.h"
+#include "utils/include/probes.h"
 #include "utils/include/reference_monitor_state.h"
 #include "utils/include/sha256_utils.h"
 #include "utils/include/state.h"
@@ -41,10 +41,6 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Andrea De Filippis");
 MODULE_DESCRIPTION("reference monitor service");
-
-#define AUDIT if (1)
-#define NO (0)
-#define YES (NO + 1)
 
 // -------------------------- MODULE PARAMETERS --------------------------
 
@@ -113,33 +109,6 @@ static int checkPasswordAndPermission(char __user *input_password,
     }
 
     return 0;
-}
-
-/**
- * @brief Schedule a new deferred work to write the intrusion in the log.
- *
- * @param reason Reason of the intrusion
- * @param main_path Main path accessed
- * @param optional_path In case of renaming, this would have been the new path
- * (if the operation had not been denied)
- */
-void schedule_deferred_log(intrusion_type reason, char *main_path,
-                           char *optional_path) {
-    struct intrusion_info *info;
-
-    // This struct is allocated here, but freed at the end of the deferred work
-    info = kmalloc(sizeof(struct intrusion_info), GFP_KERNEL);
-
-    info->reason = reason;
-    info->main_path = main_path;
-    info->optional_path = optional_path;
-    info->tgid = CURRENT_TGID;
-    info->tid = CURRENT_TID;
-    info->uid = CURRENT_UID;
-    info->euid = CURRENT_EUID;
-
-    INIT_WORK(&info->the_work, log_intrusion);
-    schedule_work(&info->the_work);
 }
 
 // -------------------------- MODULE SYSCALLS --------------------------
@@ -279,7 +248,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
             }
 
             AUDIT
-            printk(KERN_INFO "%s: Path successfully added: %s.\n", MODNAME,
+            printk(KERN_INFO "%s: Path successfully added: '%s'.\n", MODNAME,
                    k_path_str);
 
             break;
@@ -292,7 +261,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
             if (ret == -1) {
                 // NOT FOUND
                 printk(KERN_ERR
-                       "%s: Path not found. Is the path protected? Path: %s",
+                       "%s: Path not found. Is the path protected? Path: '%s'",
                        MODNAME, k_path_str);
                 break;
             } else if (ret == -2) {
@@ -306,7 +275,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
             }
 
             AUDIT
-            printk(KERN_INFO "%s: Path successfully deleted: %s\n", MODNAME,
+            printk(KERN_INFO "%s: Path successfully deleted: '%s'\n", MODNAME,
                    k_path_str);
 
             break;

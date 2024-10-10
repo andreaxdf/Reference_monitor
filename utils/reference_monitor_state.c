@@ -6,7 +6,7 @@ struct reference_monitor {
     spinlock_t monitor_lock;
 };
 
-struct reference_monitor ref_monitor;
+static struct reference_monitor ref_monitor;
 
 void initialize_monitor_state(void) {
     ref_monitor.state = REC_OFF;  // REC_OFF as default to configure the monitor
@@ -92,15 +92,17 @@ static bool __is_path_already_protected(struct path kern_path) {
 
 /**
  * @brief Checks if kern_path or a parent path is protected. The
- * function doesn't lock the monitor.
+ * function lock the monitor.
  *
  * @param kern_path path to check
  * @return true if the path is already protected, false otherwise
  */
-bool is_path_protected(struct path kern_path) {
+bool is_path_protected(struct path *kern_path) {
     protected_path *entry;
-    struct dentry *curr_dentry = kern_path.dentry;
-    struct vfsmount *curr_mnt = kern_path.mnt;  // It doesn't change in while
+    struct dentry *curr_dentry = kern_path->dentry;
+    struct vfsmount *curr_mnt = kern_path->mnt;
+
+    spin_lock(&ref_monitor.monitor_lock);
 
     do {
         list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
@@ -112,7 +114,10 @@ bool is_path_protected(struct path kern_path) {
         }
 
         curr_dentry = dget_parent(curr_dentry);
+        // The vfsmount doesn't change in the cycle
     } while (!IS_ROOT(curr_dentry));
+
+    spin_unlock(&ref_monitor.monitor_lock);
 
     return false;
 }

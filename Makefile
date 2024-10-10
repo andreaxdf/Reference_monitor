@@ -1,6 +1,5 @@
 obj-m += the_reference_monitor.o
-the_reference_monitor-objs += reference_monitor.o lib/scth.o utils/sha256_utils.o utils/utils.o utils/state.o utils/intrusion_log.o utils/reference_monitor_state.o
-# utils/probes.o
+the_reference_monitor-objs += reference_monitor.o lib/scth.o utils/sha256_utils.o utils/utils.o utils/state.o utils/intrusion_log.o utils/reference_monitor_state.o utils/probes.o
 
 SYS_CALL_TABLE = $(shell sudo cat /sys/module/the_usctm/parameters/sys_call_table_address)
 PASSWORD = $(shell cat ./password)
