@@ -33,7 +33,7 @@ void print_message(const char *fmt, ...) {
 bool isRoot(void) { return CURRENT_EUID == 0; }
 
 /**
- * @brief Returns the user string in a kernel buffer.
+ * @brief Returns the user string in a dynamically allocated kernel buffer.
  *
  * @param user_string: string passed by user.
  * @return the user string in a kernel buffer or an error if something went

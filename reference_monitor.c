@@ -32,6 +32,7 @@
 
 #include "lib/include/scth.h"
 #include "utils/include/constants.h"
+#include "utils/include/intrusion_log.h"
 #include "utils/include/sha256_utils.h"
 #include "utils/include/state.h"
 #include "utils/include/utils.h"
@@ -44,7 +45,6 @@ MODULE_DESCRIPTION("reference monitor service");
 #define AUDIT if (1)
 #define NO (0)
 #define YES (NO + 1)
-#define CURRENT_TID current->pid
 
 // -------------------------- MODULE PARAMETERS --------------------------
 
@@ -175,6 +175,33 @@ static bool remove_protected_path(struct path kern_path) {
     return false;
 }
 
+/**
+ * @brief Schedule a new deferred work to write the intrusion in the log.
+ *
+ * @param reason Reason of the intrusion
+ * @param main_path Main path accessed
+ * @param optional_path In case of renaming, this would have been the new path
+ * (if the operation had not been denied)
+ */
+void schedule_deferred_log(intrusion_type reason, char *main_path,
+                           char *optional_path) {
+    struct intrusion_info *info;
+
+    // This struct is allocated here, but freed at the end of the deferred work
+    info = kmalloc(sizeof(struct intrusion_info), GFP_KERNEL);
+
+    info->reason = reason;
+    info->main_path = main_path;
+    info->optional_path = optional_path;
+    info->tgid = CURRENT_TGID;
+    info->tid = CURRENT_TID;
+    info->uid = CURRENT_UID;
+    info->euid = CURRENT_EUID;
+
+    INIT_WORK(&info->the_work, log_intrusion);
+    schedule_work(&info->the_work);
+}
+
 // -------------------------- MODULE SYSCALLS --------------------------
 
 /**
@@ -288,15 +315,18 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
             // Path does not exist
             printk(KERN_ERR "%s: The input path does not exist: '%s'.\n",
                    MODNAME, k_path_str);
+            kfree(k_path_str);
             return -EINVAL;
         } else if (ret == -EACCES) {
             // The program does not have the permission to access the path
             printk(KERN_ERR "%s: Permission denied accessing the input path.\n",
                    MODNAME);
+            kfree(k_path_str);
             return -EPERM;
         } else {
             printk(KERN_ERR "%s: Failed to resolve path '%s'\n", MODNAME,
                    k_path_str);
+            kfree(k_path_str);
             return -EINVAL;
         }
     }
@@ -309,6 +339,8 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
 
             if (is_path_already_protected(k_path) == true) {
                 printk(KERN_INFO "%s: Path is already protected.\n", MODNAME);
+                kfree(k_path_str);
+
                 return 0;
             }
 
@@ -324,7 +356,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
             AUDIT
             printk(KERN_INFO "%s: New path added: %s.\n", MODNAME, k_path_str);
 
-            return 0;
+            break;
         case REMOVE:
             // Remove the path from the protected ones
             AUDIT
@@ -334,6 +366,8 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
                 printk(KERN_ERR "%s: Failed to delete the path: %s\n", MODNAME,
                        k_path_str);
                 printk(KERN_ERR "%s: Is the path protected?\n", MODNAME);
+                kfree(k_path_str);
+
                 return -EINVAL;
             }
 
@@ -346,8 +380,11 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
                    "%s: The input mode is invalid. Use the mode enum to "
                    "choose ADD or REMOVE.\n",
                    MODNAME);
+            kfree(k_path_str);
             return -EINVAL;
     }
+
+    kfree(k_path_str);
 
     return 0;
 }

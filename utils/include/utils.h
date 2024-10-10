@@ -12,6 +12,9 @@
 #define MODNAME "REFERENCE_MONITOR"
 #define MAX_LOGMSG_LEN 256
 #define CURRENT_EUID current_euid().val
+#define CURRENT_TID current->pid
+#define CURRENT_UID current_euid().val
+#define CURRENT_TGID current->tgid
 
 void print_message(const char *fmt, ...);
 

@@ -2,3 +2,4 @@ user_interface/a.out
 image
 singlefilemakefs
 .vscode/*
+user_interface/cli_interface
