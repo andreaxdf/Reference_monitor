@@ -26,7 +26,7 @@
 #include "state.h"
 
 typedef struct _protected_path {
-    struct path actual_path;
+    struct path *actual_path;
     struct list_head list;
 } protected_path;
 

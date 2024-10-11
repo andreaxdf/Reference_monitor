@@ -179,18 +179,18 @@ static struct kretprobe *my_kretprobes[] = {
     &kretprobe_struct_rename,
 };
 
+/**
+ * @brief Register all the kretprobes of this module.
+ *
+ * @return true if registration succeeds, false otherwise
+ */
 bool register_my_kretprobes(void) {
     int ret = register_kretprobes(my_kretprobes, ARRAY_SIZE(my_kretprobes));
     if (ret < 0) {
-        AUDIT
         printk(KERN_ERR "%s: kretprobes registration failed. error = %d\n",
                MODNAME, ret);
         return false;
     }
-
-    AUDIT
-    printk(KERN_INFO "%s: all the kretprobes are successfully registered.\n",
-           MODNAME);
 
     return true;
 }
@@ -203,4 +203,38 @@ void unregister_my_kretprobes(void) {
            MODNAME);
 
     return;
+}
+
+bool enable_my_kretprobes(void) {
+    int i;
+    for (i = 0; i < ARRAY_SIZE(my_kretprobes); i++) {
+        int ret = enable_kretprobe(my_kretprobes[i]);
+        if (ret < 0) {
+            printk(KERN_INFO "%s: Impossible to enable kretprobe '%s'.\n",
+                   MODNAME, my_kretprobes[i]->kp.symbol_name);
+            return false;
+        } else {
+            printk(KERN_INFO "%s: kretprobe '%s' enabled.\n", MODNAME,
+                   my_kretprobes[i]->kp.symbol_name);
+        }
+    }
+
+    return true;
+}
+
+bool disable_my_kretprobes(void) {
+    int i;
+    for (i = 0; i < ARRAY_SIZE(my_kretprobes); i++) {
+        int ret = disable_kretprobe(my_kretprobes[i]);
+        if (ret < 0) {
+            printk(KERN_INFO "%s: Impossible to disable kretprobe '%s'.\n",
+                   MODNAME, my_kretprobes[i]->kp.symbol_name);
+            return false;
+        } else {
+            printk(KERN_INFO "%s: kretprobe '%s' disabled.\n", MODNAME,
+                   my_kretprobes[i]->kp.symbol_name);
+        }
+    }
+
+    return true;
 }

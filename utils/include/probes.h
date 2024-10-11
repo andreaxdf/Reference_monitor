@@ -9,4 +9,12 @@
 #include "intrusion_log.h"
 #include "reference_monitor_state.h"
 
+bool register_my_kretprobes(void);
+
+void unregister_my_kretprobes(void);
+
+bool enable_my_kretprobes(void);
+
+bool disable_my_kretprobes(void);
+
 #endif

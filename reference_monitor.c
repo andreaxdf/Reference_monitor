@@ -288,6 +288,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
             break;
     }
 
+    path_put(&k_path);
     kfree(k_path_str);
 
     return ret;
@@ -364,6 +365,17 @@ int init_module(void) {
 
     AUDIT
     printk("%s: password digest computed\n", MODNAME);
+
+    // KRETPROBES REGISTRATION
+
+    if (!register_my_kretprobes()) {
+        printk(KERN_ERR "%s: kretprobes registration failed. \n", MODNAME);
+        return -1;
+    }
+
+    AUDIT
+    printk(KERN_INFO "%s: all the kretprobes are successfully registered.\n",
+           MODNAME);
 
     return 0;
 }
