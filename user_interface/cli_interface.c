@@ -72,8 +72,9 @@ void remove_path() {
     get_syscall_number_from_user(&sys_add_remove_protected_path,
                                  "sys_add_remove_protected_path");
 
-    get_string_from_user(path, 512,
-                         YELLOW "Enter the path you want to protect: " RESET);
+    get_string_from_user(
+        path, 512,
+        YELLOW "Enter the path you don't want to protect anymore: " RESET);
     remove_new_line(path);
 
     printf("Removing %s...\n", path);

@@ -118,6 +118,7 @@ static bool __is_path_already_protected(struct path *kern_path) {
 bool is_path_protected(struct path *kern_path) {
     protected_path *entry;
     struct dentry *curr_dentry = kern_path->dentry;
+    bool ret = false;
 
     spin_lock(&ref_monitor.monitor_lock);
 
@@ -126,7 +127,8 @@ bool is_path_protected(struct path *kern_path) {
             // Check if the dentry and the path already exist in the list
 
             if (__compare_paths(curr_dentry, entry->actual_path->dentry)) {
-                return true;
+                ret = true;
+                break;
             }
         }
 
