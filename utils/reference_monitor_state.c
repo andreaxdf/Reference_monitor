@@ -31,7 +31,7 @@ void print_monitor_state(void) {
 
     list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
         buff = (char *)__get_free_page(GFP_KERNEL);
-        pathname = d_path(entry->actual_path, buff, PAGE_SIZE);
+        pathname = d_path(&(entry->actual_path), buff, PAGE_SIZE);
 
         if (IS_ERR(pathname))
             printk("\t\t\t\t error converting a path to string\n");
@@ -100,7 +100,7 @@ static bool __is_path_already_protected(struct path *kern_path) {
     list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
         // Check if the dentry and the path already exist in the list
 
-        if (__compare_paths(kern_path->dentry, entry->actual_path->dentry)) {
+        if (__compare_paths(kern_path->dentry, entry->actual_path.dentry)) {
             return true;
         }
     }
@@ -126,7 +126,7 @@ bool is_path_protected(struct path *kern_path) {
         list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
             // Check if the dentry and the path already exist in the list
 
-            if (__compare_paths(curr_dentry, entry->actual_path->dentry)) {
+            if (__compare_paths(curr_dentry, entry->actual_path.dentry)) {
                 ret = true;
                 break;
             }
@@ -152,7 +152,6 @@ bool is_path_protected(struct path *kern_path) {
  */
 int add_protected_path(struct path kern_path) {
     protected_path *new_protected_path;
-    struct path *new_path;
 
     spin_lock(&ref_monitor.monitor_lock);
 
@@ -167,20 +166,17 @@ int add_protected_path(struct path kern_path) {
     }
 
     new_protected_path = kmalloc(sizeof(protected_path), GFP_KERNEL);
-    new_path = kmalloc(sizeof(struct path), GFP_KERNEL);
     if (!new_protected_path) {
         spin_unlock(&ref_monitor.monitor_lock);
         return -1;
     }
 
-    memcpy(new_path, &kern_path, sizeof(struct path));
+    // Copying the path struct -> no out of scope problems should be met
+    new_protected_path->actual_path = kern_path;
+    INIT_LIST_HEAD(&(new_protected_path->list));
 
     // Used to increment the reference counter of the objs dentry e vfsmount
-    path_get(new_path);
-
-    // Copying the path struct -> no out of scope problems should be met
-    new_protected_path->actual_path = new_path;
-    INIT_LIST_HEAD(&(new_protected_path->list));
+    path_get(&kern_path);
 
     list_add(&(new_protected_path->list), &ref_monitor.protected_paths);
 
@@ -212,16 +208,15 @@ int remove_protected_path(struct path kern_path) {
     // Iterate over the list to find the path
     // Using the safe version since we must modify the list
     list_for_each_entry_safe(entry, tmp, &ref_monitor.protected_paths, list) {
-        if (__compare_paths(kern_path.dentry, entry->actual_path->dentry)) {
+        if (__compare_paths(kern_path.dentry, entry->actual_path.dentry)) {
             // Remove the item from the list
             list_del(&entry->list);
 
             // Free the memory
-            path_put(
-                entry->actual_path);  // Used to decrement the reference
-                                      // counter of the objs dentry e vfsmount,
-                                      // so that they can be released
-            kfree(entry->actual_path);
+            path_put(&(
+                entry->actual_path));  // Used to decrement the reference
+                                       // counter of the objs dentry e vfsmount,
+                                       // so that they can be released
             kfree(entry);
             ret = 0;
             break;
