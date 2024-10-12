@@ -263,6 +263,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
                 printk(KERN_ERR
                        "%s: Path not found. Is the path protected? Path: '%s'",
                        MODNAME, k_path_str);
+                ret = -EINVAL;
                 break;
             } else if (ret == -2) {
                 // MONITOR NOT RECONFIGURABLE
@@ -391,4 +392,7 @@ void cleanup_module(void) {
     }
     protect_memory();
     printk("%s: sys-call table restored to its original content\n", MODNAME);
+
+    unregister_my_kretprobes();
+    printk("%s: kretprobes unregistered\n", MODNAME);
 }

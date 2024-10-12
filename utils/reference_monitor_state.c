@@ -84,6 +84,9 @@ static bool __compare_paths(struct dentry *d1, struct dentry *d2) {
     bool same_inode = D_INODE_NUMBER(d1) == D_INODE_NUMBER(d2);
     bool same_device = DEVICE_ID(d1) == DEVICE_ID(d2);
 
+    printk("%s: same_inode = %d - same_device = %d, %d\n", MODNAME, same_inode,
+           same_device, same_inode && same_device);
+
     return same_inode && same_device;
 }
 
@@ -94,18 +97,29 @@ static bool __compare_paths(struct dentry *d1, struct dentry *d2) {
  * @param kern_path path to check
  * @return true if the path is already protected, false otherwise
  */
-static bool __is_path_already_protected(struct path *kern_path) {
+static bool __is_dentry_already_protected(struct dentry *kern_dentry) {
     protected_path *entry;
 
     list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
         // Check if the dentry and the path already exist in the list
 
-        if (__compare_paths(kern_path->dentry, entry->actual_path.dentry)) {
+        if (__compare_paths(kern_dentry, entry->actual_path.dentry)) {
             return true;
         }
     }
 
     return false;
+}
+
+/**
+ * @brief Checks if kern_path (not any parent path) is already protected. The
+ * function doesn't lock the monitor.
+ *
+ * @param kern_path path to check
+ * @return true if the path is already protected, false otherwise
+ */
+static bool __is_path_already_protected(struct path *kern_path) {
+    return __is_dentry_already_protected(kern_path->dentry);
 }
 
 /**
@@ -116,20 +130,15 @@ static bool __is_path_already_protected(struct path *kern_path) {
  * @return true if the path is already protected, false otherwise
  */
 bool is_path_protected(struct path *kern_path) {
-    protected_path *entry;
     struct dentry *curr_dentry = kern_path->dentry;
     bool ret = false;
 
     spin_lock(&ref_monitor.monitor_lock);
 
     do {
-        list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
-            // Check if the dentry and the path already exist in the list
-
-            if (__compare_paths(curr_dentry, entry->actual_path.dentry)) {
-                ret = true;
-                break;
-            }
+        if (__is_dentry_already_protected(curr_dentry)) {
+            ret = true;
+            break;
         }
 
         curr_dentry = dget_parent(curr_dentry);
@@ -137,7 +146,7 @@ bool is_path_protected(struct path *kern_path) {
 
     spin_unlock(&ref_monitor.monitor_lock);
 
-    return false;
+    return ret;
 }
 
 /**
