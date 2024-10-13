@@ -46,7 +46,6 @@ mount_fs:
 
 unmount_fs:
 	sudo umount $(LOG_DIRECTORY_PATH)/ -f
-	# rmdir $(LOG_DIRECTORY_PATH)
 
 mount: 
 	@echo "\nMOUNTING MODULES...\n"

@@ -17,3 +17,6 @@ $(TARGET): $(OBJS)
 .PHONY: clean
 clean:
 	rm -f $(OBJS) $(TARGET)
+
+run:
+	sudo ./$(TARGET)

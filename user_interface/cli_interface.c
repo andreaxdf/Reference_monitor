@@ -14,9 +14,17 @@
 #define RED "\x1B[31m"
 #define PASSWORD "password"
 
+#define USE_USUAL_SYS_NUMBER true
+
+#if USE_USUAL_SYS_NUMBER
+int sys_change_monitor_state = 156;
+int sys_show_monitor_state = 174;
+int sys_add_remove_protected_path = 177;
+#else
 int sys_change_monitor_state = 0;
 int sys_show_monitor_state = 0;
 int sys_add_remove_protected_path = 0;
+#endif
 
 void print_operation_result(int ret) {
     if (ret == 0)
