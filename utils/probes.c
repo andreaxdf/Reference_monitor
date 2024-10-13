@@ -96,8 +96,7 @@ static char *get_current_executable_path(void) {
 
     path_str = kstrdup(path_str, GFP_KERNEL);
     if (!path_str) {
-        printk(KERN_ERR "%s-PROBE: kstrdup failed to allocate memory.\n",
-               MODNAME);
+        printk(KERN_ERR "%s-PROBE: kstrdup failed.\n", MODNAME);
         return NULL;
     }
 
@@ -137,6 +136,13 @@ static void schedule_deferred_log_with_path(intrusion_type reason,
     if (!info || IS_ERR(main_path_str) || IS_ERR(optional_path_str)) {
         printk(KERN_ERR
                "%s: impossible to allocate buffer for deferred work objects\n",
+               MODNAME);
+        return;
+    }
+
+    if (!curr_exe_pathname) {
+        printk(KERN_ERR
+               "%s: impossible to retrieve the current executable pathname\n",
                MODNAME);
         return;
     }
@@ -183,13 +189,21 @@ static int pre_handler_path_rename(struct kretprobe_instance *ri,
     old_dentry = (struct dentry *)regs->si;
     // rcx contains the fourth parameter -> struct dentry *new_dentry
     new_dentry = (struct dentry *)regs->cx;
+    if (!old_dentry || !new_dentry) return 1;
 
+    // Check if the old entry is protected
     old = is_path_protected(old_dentry);
+    // Check if the new directory is protected
     new = is_path_protected(new_dentry);
+    AUDIT
+    printk("%s-PROBE: new_dentry checked.\n", MODNAME);
 
     if (old || new) {
         char *buff;
         char *pathname;
+
+        AUDIT
+        printk("%s-PROBE: protected path renaming detected.\n", MODNAME);
 
         // Get old entry path
         old_path.dentry = old_dentry;
@@ -208,8 +222,6 @@ static int pre_handler_path_rename(struct kretprobe_instance *ri,
         pathname = d_path(protected_path, buff, PAGE_SIZE);
 
         if (IS_ERR(pathname)) {
-            AUDIT
-            printk("%s-PROBE: protected path renaming detected.\n", MODNAME);
             printk(KERN_ERR "%s-PROBE: error retrieving the path string.\n",
                    MODNAME);
         } else {

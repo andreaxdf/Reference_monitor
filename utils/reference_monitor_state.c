@@ -97,6 +97,10 @@ static bool __compare_paths(struct dentry *d1, struct dentry *d2) {
 static bool __is_dentry_already_protected(struct dentry *kern_dentry) {
     protected_path *entry;
 
+    // If the d_entry does not have an inode (e.g. it is used to rename a file),
+    // the dentry is not protected.
+    if (!kern_dentry->d_inode) return false;
+
     list_for_each_entry(entry, &ref_monitor.protected_paths, list) {
         // Check if the dentry and the path already exist in the list
 
@@ -129,27 +133,21 @@ static bool __is_path_already_protected(struct path *kern_path) {
 bool is_path_protected(struct dentry *kern_dentry) {
     struct dentry *curr_dentry = kern_dentry;
     bool ret = false;
-    int i = 1;
 
-    spin_lock(&ref_monitor.monitor_lock);
+    // TODO
+    // spin_lock(&ref_monitor.monitor_lock);
 
     do {
-        if (curr_dentry == NULL) {
-            printk(
-                KERN_ERR
-                "%s: NULL POINTER in is_path_protected at the %dth iteration\n",
-                MODNAME, i);
-        }
         if (__is_dentry_already_protected(curr_dentry)) {
             ret = true;
             break;
         }
 
         curr_dentry = dget_parent(curr_dentry);
-        i++;
     } while (!IS_ROOT(curr_dentry));
 
-    spin_unlock(&ref_monitor.monitor_lock);
+    // TODO
+    // spin_unlock(&ref_monitor.monitor_lock);
 
     return ret;
 }
@@ -210,7 +208,7 @@ int add_protected_path(struct path kern_path) {
  */
 int remove_protected_path(struct path kern_path) {
     protected_path *entry, *tmp;
-    bool ret = -1;
+    int ret = -1;
 
     spin_lock(&ref_monitor.monitor_lock);
 

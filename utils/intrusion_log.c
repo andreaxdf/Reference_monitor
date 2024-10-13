@@ -343,9 +343,7 @@ void log_intrusion(struct work_struct *work) {
         MODNAME, message_buffer);
 
 cleanup:
-    printk("%s-DEFERRED WORK: cleaning up\n", MODNAME);
     // Clean up
-    SAFE_KFREE(current_exe_path);
     SAFE_KFREE(description);
     SAFE_KFREE(message_buffer);
     SAFE_KFREE(intrusion_info->main_path);
