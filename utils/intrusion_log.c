@@ -7,7 +7,7 @@
 #define INTRUSION_DESCRIPTION_SIZE \
     PATH_MAX * 2 + 100  // The description may have at most 2 path and some
                         // other description string
-#define LOG_PATH "/tmp/refmon_log/the-refmon-log"
+#define LOG_PATH "/tmp/refmon_log/the-file"
 
 #define SAFE_KFREE(ptr) \
     do {                \
@@ -38,40 +38,6 @@ void *cleanup(void *ptr) {
     if (ptr) kfree(ptr);
 
     return NULL;
-}
-
-/**
- * @brief Get the executable path object. NB: The returned buffer is dynamically
- * allocated, so it needs to be freed.
- *
- * @return Current executable path.
- */
-static char *get_current_executable_path(void) {
-    char *path;
-    char *buf;
-    struct path *exe_path;
-
-    // Get the executable file path of the current process
-    exe_path = &current->mm->exe_file->f_path;
-    path_get(exe_path);  // Increases the refcount of the path
-
-    buf = (char *)kmalloc(PATH_MAX, GFP_KERNEL);
-    if (!buf) {
-        printk(KERN_ERR "Unable to allocate memory for path buffer.\n");
-        return NULL;
-    }
-
-    path = d_path(exe_path, buf, PATH_MAX);
-    if (IS_ERR(path)) {
-        printk(KERN_ERR "Unable to retrieve path.\n");
-    } else {
-        printk(KERN_INFO "Executable Path: %s\n", path);
-    }
-
-    // Clean up
-    path_put(exe_path);  // Decrease the refcount of the file structure
-
-    return path;
 }
 
 /**
@@ -144,10 +110,10 @@ int get_log_message(struct log_entry *log_entry, char *dst, size_t dst_size) {
 
     lenght = snprintf(
         dst, dst_size,
-        "\n---------------------------------------------------------"
+        "\n---------------------------------------------------------\n"
         "Reason: %s\n"
         "TGID: %d, TID: %d, UID: %u, EUID: %u\n"
-        "Program pathname: %s\n"
+        "Intruder program pathname: %s\n"
         "Hash SHA256: %s\n"
         "---------------------------------------------------------\n",
         log_entry->description, log_entry->tgid, log_entry->tid, log_entry->uid,
@@ -255,35 +221,35 @@ void log_intrusion(struct work_struct *work) {
     struct log_entry log_entry;
     char exe_hashed_hex[SHA256_DIGEST_SIZE * 2 +
                         1];  // store the hexadecimal version of the hash
-    char *current_exe_path;
-    char *description;
-    char *message_buffer;
+    char *current_exe_path = NULL;
+    char *description = NULL;
+    char *message_buffer = NULL;
 
     int message_size;
 
     int ret;
 
     AUDIT
-    printk("%s-DEFERRED WORK: start logging the intrusion", MODNAME);
+    printk("%s-DEFERRED WORK: start logging the intrusion\n", MODNAME);
 
     // Retrieve the executable path
-    current_exe_path = get_current_executable_path();
-    if (current_exe_path == NULL) {
-        printk(KERN_ERR
-               "%s-DEFERRED WORK: Impossible to retrieve the executable path.",
-               MODNAME);
-        return;
-    }
+    current_exe_path = intrusion_info->curr_exe_pathname;
+
+    AUDIT
+    printk("%s-DEFERRED WORK: executable pathname retrieved\n", MODNAME);
 
     if (get_executable_hash(current_exe_path, exe_hashed_hex) != 0) {
         goto cleanup;
     }
 
+    AUDIT
+    printk("%s-DEFERRED WORK: executable hash retrieved\n", MODNAME);
+
     description = kmalloc(INTRUSION_DESCRIPTION_SIZE, GFP_KERNEL);
     if (!description) {
         printk(KERN_ERR
                "%s-DEFERRED WORK: Impossible to allocate a buffer for the "
-               "intrusion description.",
+               "intrusion description.\n",
                MODNAME);
         goto cleanup;
     }
@@ -293,12 +259,15 @@ void log_intrusion(struct work_struct *work) {
     if (ret < 0) {
         printk(KERN_ERR
                "%s-DEFERRED WORK: Impossible to create the log description. "
-               "error = %d",
+               "error = %d\n",
                MODNAME, ret);
         // Use a default description if something failed
         ret = snprintf(description, INTRUSION_DESCRIPTION_SIZE,
                        "Attempt to access a file in a protected path.\n");
     }
+
+    AUDIT
+    printk("%s-DEFERRED WORK: intrusion decscription retrieved\n", MODNAME);
 
     log_entry.description = description;               // Description
     log_entry.tgid = intrusion_info->tgid;             // T-GID
@@ -312,7 +281,7 @@ void log_intrusion(struct work_struct *work) {
     if (message_size < 0) {
         printk(KERN_ERR
                "%s-DEFERRED WORK: Impossible to get the log message size. "
-               "error = %d",
+               "error = %d\n",
                MODNAME, message_size);
         goto cleanup;
     }
@@ -321,7 +290,7 @@ void log_intrusion(struct work_struct *work) {
     if (!message_buffer) {
         printk(KERN_ERR
                "%s-DEFERRED WORK: Impossible to allocate a buffer for the "
-               "log message.",
+               "log message.\n",
                MODNAME);
         goto cleanup;
     }
@@ -330,40 +299,58 @@ void log_intrusion(struct work_struct *work) {
     if (message_size < 0) {
         printk(KERN_ERR
                "%s-DEFERRED WORK: Impossible to create the log message. "
-               "error = %d",
+               "error = %d\n",
                MODNAME, message_size);
         goto cleanup;
     }
+
+    AUDIT
+    printk("%s-DEFERRED WORK: log message retrieved\n", MODNAME);
 
     // Open log file
     file = filp_open(LOG_PATH, O_WRONLY | O_APPEND, 0);
     if (IS_ERR(file)) {
         printk(KERN_ERR
                "%s-DEFERRED WORK: Impossible to open the log file. "
-               "error = %ld",
+               "error = %ld\n",
                MODNAME, PTR_ERR(file));
         goto cleanup;
     }
+
+    AUDIT
+    printk("%s-DEFERRED WORK: file opened\n", MODNAME);
 
     // Write to the log file
     ret = kernel_write(file, message_buffer, message_size - 1, &file->f_pos);
     if (ret < 0) {
         printk(KERN_ERR
                "%s-DEFERRED WORK: Impossible to write the message in the log. "
-               "error = %d",
+               "error = %d\n",
                MODNAME, ret);
-        // Do not do any cleanup operation, they will be done in anycase
+        filp_close(file, NULL);
+        goto cleanup;
     }
 
     filp_close(file, NULL);
 
+    AUDIT
+    printk("%s-DEFERRED WORK: file closed\n", MODNAME);
+
+    AUDIT
+    printk(
+        "%s-DEFERRED WORK: message written:\n"
+        "\t%s\n",
+        MODNAME, message_buffer);
+
 cleanup:
+    printk("%s-DEFERRED WORK: cleaning up\n", MODNAME);
     // Clean up
     SAFE_KFREE(current_exe_path);
     SAFE_KFREE(description);
     SAFE_KFREE(message_buffer);
     SAFE_KFREE(intrusion_info->main_path);
     SAFE_KFREE(intrusion_info->optional_path);
+    SAFE_KFREE(intrusion_info->curr_exe_pathname);
     SAFE_KFREE(intrusion_info);
 
     return;

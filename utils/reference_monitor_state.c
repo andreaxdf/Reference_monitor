@@ -84,9 +84,6 @@ static bool __compare_paths(struct dentry *d1, struct dentry *d2) {
     bool same_inode = D_INODE_NUMBER(d1) == D_INODE_NUMBER(d2);
     bool same_device = DEVICE_ID(d1) == DEVICE_ID(d2);
 
-    printk("%s: same_inode = %d - same_device = %d, %d\n", MODNAME, same_inode,
-           same_device, same_inode && same_device);
-
     return same_inode && same_device;
 }
 
@@ -129,19 +126,27 @@ static bool __is_path_already_protected(struct path *kern_path) {
  * @param kern_path path to check
  * @return true if the path is already protected, false otherwise
  */
-bool is_path_protected(struct path *kern_path) {
-    struct dentry *curr_dentry = kern_path->dentry;
+bool is_path_protected(struct dentry *kern_dentry) {
+    struct dentry *curr_dentry = kern_dentry;
     bool ret = false;
+    int i = 1;
 
     spin_lock(&ref_monitor.monitor_lock);
 
     do {
+        if (curr_dentry == NULL) {
+            printk(
+                KERN_ERR
+                "%s: NULL POINTER in is_path_protected at the %dth iteration\n",
+                MODNAME, i);
+        }
         if (__is_dentry_already_protected(curr_dentry)) {
             ret = true;
             break;
         }
 
         curr_dentry = dget_parent(curr_dentry);
+        i++;
     } while (!IS_ROOT(curr_dentry));
 
     spin_unlock(&ref_monitor.monitor_lock);

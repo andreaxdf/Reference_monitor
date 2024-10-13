@@ -15,7 +15,8 @@
         "reference_monitor_state.h": "c",
         "constants.h": "c",
         "intrusion_log.h": "c",
-        "sched.h": "c"
+        "sched.h": "c",
+        "mount.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

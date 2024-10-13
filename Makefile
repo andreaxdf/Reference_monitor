@@ -45,8 +45,8 @@ mount_fs:
 	sudo mount -o loop -t singlefilefs image $(LOG_DIRECTORY_PATH)/
 
 unmount_fs:
-	sudo umount $(LOG_DIRECTORY_PATH)/
-	rm $(LOG_DIRECTORY_PATH)
+	sudo umount $(LOG_DIRECTORY_PATH)/ -f
+	# rmdir $(LOG_DIRECTORY_PATH)
 
 mount: 
 	@echo "\nMOUNTING MODULES...\n"
@@ -54,7 +54,6 @@ mount:
 	-$(MAKE) mount_usctm 
 	$(MAKE) mount_reference_monitor
 	$(MAKE) mount_fs
-	
 
 	@echo "\nMODULES MOUNTED!\n"
 
@@ -73,3 +72,6 @@ unmount:
 	-sudo rmmod ./singlefile-FS/singlefilefs.ko
 
 	@echo "\nMODULES UNMOUNTED!\n"
+
+show-log_file:
+	sudo cat $(LOG_DIRECTORY_PATH)/the-file

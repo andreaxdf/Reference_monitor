@@ -36,7 +36,7 @@ state change_monitor_state(state new_state);
 
 bool is_monitor_active(void);
 
-bool is_path_protected(struct path *kern_path);
+bool is_path_protected(struct dentry *kern_dentry);
 
 int add_protected_path(struct path kern_path);
 

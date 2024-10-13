@@ -59,6 +59,59 @@ char *get_path_string(struct path *path) {
 }
 
 /**
+ * @brief Get the executable path object. NB: The returned buffer is dynamically
+ * allocated, so it needs to be freed.
+ *
+ * @return Current executable path.
+ */
+static char *get_current_executable_path(void) {
+    char *path_str;
+    char *buf;
+    struct file *exe_file;
+    struct path *exe_path;
+
+    // Get the executable file path of the current process
+    exe_file = current->mm->exe_file;
+    if (!exe_file) {
+        printk(KERN_ERR "%s-PROBE: unable to get executable file.\n", MODNAME);
+        return NULL;
+    }
+
+    exe_path = &exe_file->f_path;
+    path_get(exe_path);  // Increases the refcount of the path
+
+    buf = (char *)kmalloc(PATH_MAX, GFP_KERNEL);
+    if (!buf) {
+        printk(KERN_ERR "Unable to allocate memory for path buffer.\n");
+        return NULL;
+    }
+
+    path_str = d_path(exe_path, buf, PATH_MAX);
+    if (IS_ERR(path_str)) {
+        printk(KERN_ERR "%s-PROBE: Unable to retrieve path.\n", MODNAME);
+        path_put(exe_path);
+        kfree(buf);
+        return NULL;
+    }
+
+    path_str = kstrdup(path_str, GFP_KERNEL);
+    if (!path_str) {
+        printk(KERN_ERR "%s-PROBE: kstrdup failed to allocate memory.\n",
+               MODNAME);
+        return NULL;
+    }
+
+    AUDIT
+    printk("%s-PROBE: intruder's pathname retrieved\n", MODNAME);
+
+    // Clean up
+    path_put(exe_path);  // Decrease the refcount of the file structure
+    kfree(buf);          // The pathname is stored in the buf created by kstrdup
+
+    return path_str;
+}
+
+/**
  * @brief Schedule a new deferred work to write the intrusion in the log.
  *
  * @param reason Reason of the intrusion
@@ -71,13 +124,15 @@ static void schedule_deferred_log_with_path(intrusion_type reason,
                                             struct path *optional_path) {
     struct intrusion_info *info;
     char *main_path_str, *optional_path_str;
+    char *curr_exe_pathname;
 
-    // The info struct is allocated here, but freed at the end of the deferred
-    // work (same for its fields)
+    // The info struct is allocated here, but freed at the end of the
+    // deferred work (same for its fields)
     info = kmalloc(sizeof(struct intrusion_info), GFP_KERNEL);
 
     main_path_str = get_path_string(main_path);
     optional_path_str = get_path_string(optional_path);
+    curr_exe_pathname = get_current_executable_path();
 
     if (!info || IS_ERR(main_path_str) || IS_ERR(optional_path_str)) {
         printk(KERN_ERR
@@ -89,13 +144,14 @@ static void schedule_deferred_log_with_path(intrusion_type reason,
     info->reason = reason;
     info->main_path = main_path_str;
     info->optional_path = optional_path_str;
+    info->curr_exe_pathname = curr_exe_pathname;
     info->tgid = CURRENT_TGID;
     info->tid = CURRENT_TID;
     info->uid = CURRENT_UID;
     info->euid = CURRENT_EUID;
 
-    INIT_WORK(&info->the_work, log_intrusion);
-    schedule_work(&info->the_work);
+    INIT_WORK(&(info->the_work), log_intrusion);
+    schedule_work(&(info->the_work));
 }
 
 /**
@@ -106,50 +162,65 @@ static void schedule_deferred_log_with_path(intrusion_type reason,
  */
 static int pre_handler_path_rename(struct kretprobe_instance *ri,
                                    struct pt_regs *regs) {
-    struct path *old_path;
-    struct path *new_path;
+    struct path *old_dir;
+    struct path *new_dir;
+    struct dentry *old_dentry;
+    struct dentry *new_dentry;
+
     struct path *protected_path;
+    struct path old_path;
+    struct path new_path;
     bool old, new;
 
     // Do nothing if the monitor is disabled
     if (!is_monitor_active()) return 1;
 
     // rdi contains the first parameter -> struct path *old_dir
-    old_path = (struct path *)regs->di;
+    old_dir = (struct path *)regs->di;
     // rdx contains the third parameter -> struct path *new_dir
-    new_path = (struct path *)regs->dx;
+    new_dir = (struct path *)regs->dx;
+    // rsi contains the second parameter -> struct dentry *old_dentry
+    old_dentry = (struct dentry *)regs->si;
+    // rcx contains the fourth parameter -> struct dentry *new_dentry
+    new_dentry = (struct dentry *)regs->cx;
 
-    old = is_path_protected(old_path);
-    new = is_path_protected(new_path);
+    old = is_path_protected(old_dentry);
+    new = is_path_protected(new_dentry);
 
     if (old || new) {
         char *buff;
         char *pathname;
 
+        // Get old entry path
+        old_path.dentry = old_dentry;
+        old_path.mnt = old_dir->mnt;
+        // Get new entry path
+        new_path.dentry = new_dentry;
+        new_path.mnt = new_dir->mnt;
+
         // Get the protected path
         if (old)
-            protected_path = old_path;
+            protected_path = &old_path;
         else
-            protected_path = new_path;
+            protected_path = &new_path;
 
-        buff = (char *)__get_free_page(GFP_KERNEL);
+        buff = kmalloc(PATH_MAX, GFP_KERNEL);
         pathname = d_path(protected_path, buff, PAGE_SIZE);
 
         if (IS_ERR(pathname)) {
             AUDIT
-            printk("%s-PROBE: renaiming of a protected path detected.\n",
-                   MODNAME);
+            printk("%s-PROBE: protected path renaming detected.\n", MODNAME);
             printk(KERN_ERR "%s-PROBE: error retrieving the path string.\n",
                    MODNAME);
         } else {
             AUDIT
-            printk("%s-PROBE: renaiming of a protected path detected: '%s'.\n",
+            printk("%s-PROBE: protected path renaming detected: '%s'.\n",
                    MODNAME, pathname);
         }
 
-        schedule_deferred_log_with_path(RENAME, old_path, new_path);
+        schedule_deferred_log_with_path(RENAME, old_dir, new_dir);
 
-        free_page((unsigned long)buff);
+        kfree(buff);
 
         return 0;
     }

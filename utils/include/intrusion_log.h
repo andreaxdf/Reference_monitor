@@ -29,8 +29,8 @@ struct intrusion_info {
     pid_t tid;
     uid_t uid;
     uid_t euid;
-    // char *program_pathname;       // Pathname of the program which executes
-    // the intrusion
+    char *curr_exe_pathname;      // Pathname of the program which executes the
+                                  // intrusion
     struct work_struct the_work;  // work_struct to pass to the work_queue
 };
 

@@ -3,3 +3,4 @@ image
 singlefilemakefs
 .vscode/*
 user_interface/cli_interface
+.vscode/settings.json

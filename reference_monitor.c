@@ -88,7 +88,8 @@ static int checkPasswordAndPermission(char __user *input_password,
 
     // If the thread is not root, return permission error
     if (!isRoot()) {
-        printk(KERN_ERR "%s: state change attempted from a non-root thread.\n",
+        printk(KERN_ERR
+               "%s: attempt to change state from a non-root thread..\n",
                MODNAME);
         return -EPERM;
     }
@@ -226,7 +227,7 @@ asmlinkage long sys_add_remove_protected_path(char __user *input_password,
             ret = add_protected_path(k_path);
             if (ret == 1) {
                 // PATH ALREADY EXISTS
-                printk(KERN_INFO "%s: Path is already protected.\n", MODNAME);
+                printk(KERN_ERR "%s: Path is already protected.\n", MODNAME);
                 ret = 0;  // Path is already protected, so no problem. This
                           // operation is useless since ret is already 0, but it
                           // makes more clear the code.
