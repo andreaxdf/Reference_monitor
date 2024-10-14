@@ -57,7 +57,8 @@ static int get_intrusion_description(struct intrusion_info *intrusion_info,
     switch (intrusion_info->reason) {
         case WRITE_ON_FILE:
             ret = snprintf(buffer, buffer_size,
-                           "Attempt to write on a protected file: %s\n",
+                           "Attempt to write on a protected file.\n"
+                           "Protected path: %s\n",
                            intrusion_info->main_path);
             break;
         case RENAME:
@@ -70,27 +71,31 @@ static int get_intrusion_description(struct intrusion_info *intrusion_info,
             break;
         case DELETE:
             ret = snprintf(buffer, buffer_size,
-                           "Attempt to delete a protected path: %s\n",
+                           "Attempt to delete a protected path.\n"
+                           "Protected path: %s\n",
                            intrusion_info->main_path);
             break;
         case CREATE:
             ret = snprintf(buffer, buffer_size,
                            "Attempt to create a file in a protected path.\n"
-                           "File path: %s\n",
+                           "Protected path: %s\n",
                            intrusion_info->main_path);
             break;
         case HARD_LINK:
-            ret = snprintf(buffer, buffer_size,
-                           "Attempt to create a hard link in a protected path."
-                           "Hard link path: %s\n",
-                           intrusion_info->main_path);
+            ret = snprintf(
+                buffer, buffer_size,
+                "Attempt to create a hard link in a protected path.\n"
+                "Target path: %s\n"
+                "Hard link path: %s\n",
+                intrusion_info->main_path, intrusion_info->optional_path);
             break;
         case SYMB_LINK:
             ret = snprintf(
                 buffer, buffer_size,
-                "Attempt to create a symbolic link in a protected path."
+                "Attempt to create a symbolic link in a protected path.\n"
+                "Target path: %s\n"
                 "Symbolic link path: %s\n",
-                intrusion_info->main_path);
+                intrusion_info->main_path, intrusion_info->optional_path);
             break;
     }
 
@@ -159,8 +164,8 @@ int get_executable_hash(char *current_executable_path, char *exe_hashed_hex) {
         printk(
             KERN_ERR
             "%s-DEFERRED WORK: Impossible to allocate a buffer for the entire "
-            "executable to log.",
-            MODNAME);
+            "executable to log. file size = %lld\n",
+            MODNAME, exe_size + 1);
         filp_close(file, NULL);
         return -3;
     }
