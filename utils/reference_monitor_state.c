@@ -25,6 +25,7 @@ void print_monitor_state(void) {
 
     spin_lock(&ref_monitor.monitor_lock);
 
+    printk("\n");
     printk("%s: Monitor state: %s\n", MODNAME,
            state_to_string(ref_monitor.state));
     printk("%s: The following paths are being protected:\n", MODNAME);
@@ -134,8 +135,7 @@ bool is_path_protected(struct dentry *kern_dentry) {
     struct dentry *curr_dentry = kern_dentry;
     bool ret = false;
 
-    // TODO
-    // spin_lock(&ref_monitor.monitor_lock);
+    spin_lock(&ref_monitor.monitor_lock);
 
     do {
         if (__is_dentry_already_protected(curr_dentry)) {
@@ -146,8 +146,7 @@ bool is_path_protected(struct dentry *kern_dentry) {
         curr_dentry = dget_parent(curr_dentry);
     } while (!IS_ROOT(curr_dentry));
 
-    // TODO
-    // spin_unlock(&ref_monitor.monitor_lock);
+    spin_unlock(&ref_monitor.monitor_lock);
 
     return ret;
 }

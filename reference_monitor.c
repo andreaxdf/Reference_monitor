@@ -396,4 +396,6 @@ void cleanup_module(void) {
 
     unregister_my_kretprobes();
     printk("%s: kretprobes unregistered\n", MODNAME);
+
+    printk("%s: %s unmount succesful\n", MODNAME, MODNAME);
 }

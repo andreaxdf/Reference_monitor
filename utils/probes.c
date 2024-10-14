@@ -1,33 +1,6 @@
 #include "include/probes.h"
 
 /**
- * @brief Schedule a new deferred work to write the intrusion in the log.
- *
- * @param reason Reason of the intrusion
- * @param main_path Main path accessed
- * @param optional_path In case of renaming, this would have been the new path
- * (if the operation had not been denied)
- */
-// static void schedule_deferred_log(intrusion_type reason, char *main_path,
-//                                   char *optional_path) {
-//     struct intrusion_info *info;
-
-//     // This struct is allocated here, but freed at the end of the deferred
-//     work info = kmalloc(sizeof(struct intrusion_info), GFP_KERNEL);
-
-//     info->reason = reason;
-//     info->main_path = main_path;
-//     info->optional_path = optional_path;
-//     info->tgid = CURRENT_TGID;
-//     info->tid = CURRENT_TID;
-//     info->uid = CURRENT_UID;
-//     info->euid = CURRENT_EUID;
-
-//     INIT_WORK(&info->the_work, log_intrusion);
-//     schedule_work(&info->the_work);
-// }
-
-/**
  * @brief Get the path string in dinamically allocated buffers.
  *
  * @param path path to retrieve
@@ -160,6 +133,26 @@ static void schedule_deferred_log_with_path(intrusion_type reason,
     schedule_work(&(info->the_work));
 }
 
+struct dentry *lookup_dentry_already_exists(struct dentry *dentry,
+                                            struct path *dir) {
+    struct dentry *tmp_dentry;
+
+    // is new_dentry going to overwrite another file?
+    tmp_dentry =
+        lookup_one_len(dentry->d_name.name, dir->dentry, dentry->d_name.len);
+
+    if (IS_ERR(tmp_dentry)) return NULL;
+
+    // Check if the target dentry has an associated inode (i.e., a file with the
+    // same name exists)
+    if (!tmp_dentry->d_inode) {
+        // File not found
+        return NULL;
+    }
+
+    return tmp_dentry;
+}
+
 /**
  * @brief kretprobe of security_path_rename. This function is used either for
  * renaming or moving a file, so it is important to check both, the old and the
@@ -172,11 +165,12 @@ static int pre_handler_path_rename(struct kretprobe_instance *ri,
     struct path *new_dir;
     struct dentry *old_dentry;
     struct dentry *new_dentry;
+    struct dentry *tmp_dentry;
 
     struct path *protected_path;
     struct path old_path;
     struct path new_path;
-    bool old, new;
+    bool old, new, overwriting_protected_file = false;
 
     // Do nothing if the monitor is disabled
     if (!is_monitor_active()) return 1;
@@ -191,14 +185,21 @@ static int pre_handler_path_rename(struct kretprobe_instance *ri,
     new_dentry = (struct dentry *)regs->cx;
     if (!old_dentry || !new_dentry) return 1;
 
+    // is new_dentry going to overwrite another file?
+    tmp_dentry = lookup_dentry_already_exists(new_dentry, new_dir);
+
+    if (tmp_dentry) {
+        // Another file is going to be overwritten -> so check if this file is
+        // protected
+        overwriting_protected_file = is_path_protected(tmp_dentry);
+    }
+
     // Check if the old entry is protected
     old = is_path_protected(old_dentry);
     // Check if the new directory is protected
-    new = is_path_protected(new_dentry);
-    AUDIT
-    printk("%s-PROBE: new_dentry checked.\n", MODNAME);
+    new = is_path_protected(new_dir->dentry);
 
-    if (old || new) {
+    if (old || new || overwriting_protected_file) {
         char *buff;
         char *pathname;
 
@@ -226,11 +227,10 @@ static int pre_handler_path_rename(struct kretprobe_instance *ri,
                    MODNAME);
         } else {
             AUDIT
-            printk("%s-PROBE: protected path renaming detected: '%s'.\n",
-                   MODNAME, pathname);
+            printk("%s-PROBE: accessed path: '%s'.\n", MODNAME, pathname);
         }
 
-        schedule_deferred_log_with_path(RENAME, old_dir, new_dir);
+        schedule_deferred_log_with_path(RENAME, &old_path, &new_path);
 
         kfree(buff);
 
@@ -280,10 +280,6 @@ bool register_my_kretprobes(void) {
 
 void unregister_my_kretprobes(void) {
     unregister_kretprobes(my_kretprobes, ARRAY_SIZE(my_kretprobes));
-
-    AUDIT
-    printk(KERN_INFO "%s: all the kretprobes are successfully unregistered.\n",
-           MODNAME);
 
     return;
 }
