@@ -1,12 +1,12 @@
 #include "include/probes.h"
 
-#define DEFINE_POST_HANDLER(name)                                      \
-    static int post_handler_path_##name(struct kretprobe_instance *ri, \
-                                        struct pt_regs *regs) {        \
-        regs->ax = (unsigned long)-EACCES;                             \
-        AUDIT                                                          \
-        printk("%s-PROBE_RENAME: %s denied.\n", MODNAME, #name);       \
-        return 0;                                                      \
+#define DEFINE_POST_HANDLER(name)                                   \
+    static int post_handler_##name(struct kretprobe_instance *ri,   \
+                                   struct pt_regs *regs) {          \
+        regs->ax = (unsigned long)-EACCES;                          \
+        AUDIT                                                       \
+        printk("%s-PROBE-%s: %s denied.\n", MODNAME, #name, #name); \
+        return 0;                                                   \
     }
 
 #define DEFINE_KRTPROBE_STRUCT(name)                    \
@@ -205,6 +205,8 @@ void handle_intrusion_two_paths(intrusion_type reason, struct path *old_path,
     return;
 }
 
+// ------------------------------- KRETPROBES -------------------------------
+
 /**
  * @brief kretprobe of security_path_rename. This function is used either for
  * renaming or moving a file, so it is important to check both, the old and the
@@ -271,7 +273,7 @@ static int pre_handler_path_rename(struct kretprobe_instance *ri,
     return 2;
 }
 
-DEFINE_POST_HANDLER(rename)
+DEFINE_POST_HANDLER(path_rename)
 
 DEFINE_KRTPROBE_STRUCT(rename)
 
@@ -322,7 +324,7 @@ static int pre_handler_path_unlink(struct kretprobe_instance *ri,
     return 1;
 }
 
-DEFINE_POST_HANDLER(unlink)
+DEFINE_POST_HANDLER(path_unlink)
 
 DEFINE_KRTPROBE_STRUCT(unlink)
 
@@ -356,10 +358,10 @@ static int pre_handler_path_symlink(struct kretprobe_instance *ri,
     if (kern_path(file_target_name, LOOKUP_FOLLOW, &old_path) != 0) {
         if (kern_path(strcat(file_target_name, "~"), LOOKUP_FOLLOW,
                       &old_path) != 0) {
-            printk(KERN_ERR
-                   "%s-PROBE_SYMLINK: impossible to retrieve the old_path: "
-                   "'%s'.\n",
-                   MODNAME, file_target_name);
+            // printk(KERN_ERR
+            //        "%s-PROBE_SYMLINK: impossible to retrieve the old_path: "
+            //        "'%s'.\n",
+            //        MODNAME, file_target_name);
             return 1;
         }
     } else {
@@ -383,15 +385,19 @@ static int pre_handler_path_symlink(struct kretprobe_instance *ri,
 
         handle_intrusion_two_paths(SYMB_LINK, &old_path, &symlink_path, old);
 
+        path_put(&old_path);
+
         return 0;
     }
+
+    path_put(&old_path);
 
     // Don't overwrite the return value (and deny the operation), if the path is
     // not protected.
     return 1;
 }
 
-DEFINE_POST_HANDLER(symlink)
+DEFINE_POST_HANDLER(path_symlink)
 
 DEFINE_KRTPROBE_STRUCT(symlink)
 
@@ -447,7 +453,7 @@ static int pre_handler_path_link(struct kretprobe_instance *ri,
     return 1;
 }
 
-DEFINE_POST_HANDLER(link)
+DEFINE_POST_HANDLER(path_link)
 
 DEFINE_KRTPROBE_STRUCT(link)
 
@@ -488,15 +494,113 @@ static int pre_handler_path_rmdir(struct kretprobe_instance *ri,
     return 1;
 }
 
-DEFINE_POST_HANDLER(rmdir)
+DEFINE_POST_HANDLER(path_rmdir)
 
 DEFINE_KRTPROBE_STRUCT(rmdir)
+
+/**
+ * @brief Hanlder to avoid the creation of directory in a protected path.
+ */
+static int pre_handler_path_mkdir(struct kretprobe_instance *ri,
+                                  struct pt_regs *regs) {
+    struct path *parent_dir;
+    struct dentry *target_dentry;
+
+    // Do nothing if the monitor is disabled
+    if (!is_monitor_active()) return 1;
+
+    // rdi contains the first parameter -> struct path *dir, the dir that
+    // contain the dir to delete
+    parent_dir = (struct path *)regs->di;
+    // rsi contains the second parameter -> struct dentry *dentry, the dentry
+    // of the target dir to delete
+    target_dentry = (struct dentry *)regs->si;
+
+    if (is_path_protected(target_dentry)) {
+        struct path target_path;
+
+        AUDIT
+        printk(
+            "%s-PROBE_MKDIR: attempt to create a new dir in a protected path "
+            "detected.\n",
+            MODNAME);
+
+        target_path.dentry = target_dentry;
+        target_path.mnt = parent_dir->mnt;
+
+        handle_intrusion_one_path(CREATE, &target_path);
+
+        return 0;
+    }
+
+    // Don't overwrite the return value (and deny the operation), if the path is
+    // not protected.
+    return 1;
+}
+
+DEFINE_POST_HANDLER(path_mkdir)
+
+DEFINE_KRTPROBE_STRUCT(mkdir)
+
+// int security_file_open(struct file *file, const struct cred *cred);
+
+/**
+ * @brief Hanlder to avoid the creation of directory in a protected path.
+ */
+static int pre_handler_file_open(struct kretprobe_instance *ri,
+                                 struct pt_regs *regs) {
+    struct file *file;
+    struct path *path;
+    int access_mode;
+    bool is_writing;
+
+    // Do nothing if the monitor is disabled
+    if (!is_monitor_active()) return 1;
+
+    // rdi contains the first parameter -> struct path *dir, the dir that
+    // contain the dir to delete
+    file = (struct file *)regs->di;
+
+    path = &file->f_path;
+    // Increment the reference counter, otherwise the dentry or the
+    // vfsmount might be freed
+    path_get(path);
+    access_mode = file->f_flags & O_ACCMODE;
+
+    is_writing = access_mode != O_RDONLY;
+
+    if (is_writing && is_path_protected(path->dentry)) {
+        AUDIT
+        printk("%s-PROBE_OPEN: protected path open in write mode detected.\n",
+               MODNAME);
+
+        handle_intrusion_one_path(WRITE_ON_FILE, path);
+
+        path_put(path);
+
+        return 0;
+    }
+
+    path_put(path);
+
+    // Don't overwrite the return value (and deny the operation), if the path is
+    // not protected.
+    return 1;
+}
+
+DEFINE_POST_HANDLER(file_open)
+
+static struct kretprobe kretprobe_struct_open = {
+    .kp.symbol_name = "security_file_open",
+    .handler = post_handler_file_open,
+    .entry_handler = pre_handler_file_open,
+};
 
 static struct kretprobe *my_kretprobes[] = {
     &kretprobe_struct_rename,  &kretprobe_struct_unlink,
     &kretprobe_struct_symlink, &kretprobe_struct_link,
-    &kretprobe_struct_rmdir,
-};
+    &kretprobe_struct_rmdir,   &kretprobe_struct_mkdir,
+    &kretprobe_struct_open};
 
 /**
  * @brief Register all the kretprobes of this module.

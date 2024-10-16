@@ -3,6 +3,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/time.h>
 #include <linux/timekeeping.h>
@@ -19,6 +20,8 @@ struct mnt_idmap {
 };
 #endif
 
+spinlock_t file_op_lock;
+
 static ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
     struct buffer_head *bh = NULL;
     struct file *file = iocb->ki_filp;     // file
@@ -31,7 +34,11 @@ static ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
     int block_to_write;   // index to the block to be written
     size_t copiedBytes;
 
-    loff_t file_size = i_size_read(inode);
+    loff_t file_size;
+
+    spin_lock(&file_op_lock);
+
+    file_size = i_size_read(inode);
 
     // compute the actual index of the the block to be write from device
     block_to_write =
@@ -45,13 +52,17 @@ static ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
         free_bytes_in_block = DEFAULT_BLOCK_SIZE - block_offset;
 
     bh = sb_bread(sb, block_to_write);
-    if (!bh) return -EIO;
+    if (!bh) {
+        spin_unlock(&file_op_lock);
+        return -EIO;
+    }
 
     // Copy data from iov_iter to the block buffer. Notice the change here from
     // copy_from_user.
     copiedBytes =
         copy_from_iter(bh->b_data + block_offset, free_bytes_in_block, from);
     if (copiedBytes != free_bytes_in_block) {
+        spin_unlock(&file_op_lock);
         brelse(bh);  // Release the buffer head.
         return -EFAULT;
     }
@@ -68,6 +79,8 @@ static ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
                               // back to the disk
     iocb->ki_pos += copiedBytes;  // Even if we're appending, it's good practice
                                   // to update ki_pos.
+
+    spin_unlock(&file_op_lock);
 
     return copiedBytes;
 }
@@ -90,10 +103,13 @@ static ssize_t onefilefs_read(struct file *filp, char __user *buf, size_t len,
     //*off can be changed concurrently
     // add synchronization if you need it for any reason
 
+    spin_lock(&file_op_lock);
+
     // check that *off is within boundaries
-    if (*off >= file_size)
+    if (*off >= file_size) {
+        spin_unlock(&file_op_lock);
         return 0;
-    else if (*off + len > file_size)
+    } else if (*off + len > file_size)
         len = file_size - *off;
 
     // determine the block level offset for the operation
@@ -113,11 +129,14 @@ static ssize_t onefilefs_read(struct file *filp, char __user *buf, size_t len,
     bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb,
                                         block_to_read);
     if (!bh) {
+        spin_unlock(&file_op_lock);
         return -EIO;
     }
     ret = copy_to_user(buf, bh->b_data + offset, len);
     *off += (len - ret);
     brelse(bh);
+
+    spin_unlock(&file_op_lock);
 
     return len - ret;
 }

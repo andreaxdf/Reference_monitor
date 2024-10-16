@@ -78,7 +78,7 @@ static int get_intrusion_description(struct intrusion_info *intrusion_info,
         case CREATE:
             ret = snprintf(buffer, buffer_size,
                            "Attempt to create a file in a protected path.\n"
-                           "Protected path: %s\n",
+                           "File path: %s\n",
                            intrusion_info->main_path);
             break;
         case HARD_LINK:

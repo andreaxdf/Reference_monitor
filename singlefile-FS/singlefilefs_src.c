@@ -11,6 +11,7 @@
 #include <linux/user_namespace.h>
 #include <linux/version.h>
 
+#include "my_spinlock.h"
 #include "singlefilefs.h"
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
@@ -133,6 +134,9 @@ static struct file_system_type onefilefs_type = {
 
 static int singlefilefs_init(void) {
     int ret;
+
+    // initilize
+    spin_lock_init(&file_op_lock);
 
     // register filesystem
     ret = register_filesystem(&onefilefs_type);
