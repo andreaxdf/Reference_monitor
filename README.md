@@ -17,7 +17,7 @@ This Linux kernel module implements a **Reference Monitor** to protect specific 
 
 1. Clone the repository:
    ```bash
-   git clone [<repository-url>](https://github.com/andreaxdf/Reference_monitor.git)
+   git clone https://github.com/andreaxdf/Reference_monitor.git
    ```
 2. Compile and mount the kernel modules:
    ```bash
