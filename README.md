@@ -62,13 +62,10 @@ The reference monitor prevent all the access that try to:
 ### Example
 
 To monitor and protect access to `/home/sensitive_data`:
-1. Modify the internal path list in the source code to include the path `/home/sensitive_data`.
-2. Recompile the module and reload it using `rmmod` and `insmod`.
-
-```bash
-sudo rmmod path_protect
-sudo insmod path_protect.ko
-```
+1. Compile and load the module
+2. Using the cli interface, add the path to the module
+3. Change the status from REC-OFF - the default - to ON or REC-ON, if you still want to change something else.
+4. Now on any non-reading access to that path will be denied and logged in the file log.
 
 The module will now monitor access to `/home/sensitive_data`.
 
