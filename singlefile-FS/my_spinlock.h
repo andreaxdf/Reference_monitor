@@ -3,6 +3,6 @@
 
 #include <linux/spinlock.h>
 
-extern spinlock_t file_op_lock;
+extern struct mutex file_op_lock;
 
 #endif

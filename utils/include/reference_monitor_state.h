@@ -16,7 +16,6 @@
 #include <linux/namei.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/syscalls.h>
 #include <linux/types.h>

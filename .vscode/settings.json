@@ -16,7 +16,8 @@
         "constants.h": "c",
         "intrusion_log.h": "c",
         "sched.h": "c",
-        "mount.h": "c"
+        "mount.h": "c",
+        "singlefilefs.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled"
 }

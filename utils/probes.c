@@ -542,7 +542,46 @@ DEFINE_POST_HANDLER(path_mkdir)
 
 DEFINE_KRTPROBE_STRUCT(mkdir)
 
-// int security_file_open(struct file *file, const struct cred *cred);
+static int pre_handler_path_mknod(struct kretprobe_instance *ri,
+                                  struct pt_regs *regs) {
+    struct path *parent_dir;
+    struct dentry *target_dentry;
+
+    // Do nothing if the monitor is disabled
+    if (!is_monitor_active()) return 1;
+
+    // rdi contains the first parameter -> struct path *dir, the dir that
+    // contain the parent dir
+    parent_dir = (struct path *)regs->di;
+    // rsi contains the second parameter -> struct dentry *dentry, the dentry
+    // of the target dir to create
+    target_dentry = (struct dentry *)regs->si;
+
+    if (is_path_protected(target_dentry)) {
+        struct path target_path;
+
+        AUDIT
+        printk(
+            "%s-PROBE_MKNOD: attempt to create a new file in a protected path "
+            "detected.\n",
+            MODNAME);
+
+        target_path.dentry = target_dentry;
+        target_path.mnt = parent_dir->mnt;
+
+        handle_intrusion_one_path(CREATE, &target_path);
+
+        return 0;
+    }
+
+    // Don't overwrite the return value (and deny the operation), if the path is
+    // not protected.
+    return 1;
+}
+
+DEFINE_POST_HANDLER(path_mknod)
+
+DEFINE_KRTPROBE_STRUCT(mknod)
 
 /**
  * @brief Hanlder to avoid the creation of directory in a protected path.
@@ -600,7 +639,7 @@ static struct kretprobe *my_kretprobes[] = {
     &kretprobe_struct_rename,  &kretprobe_struct_unlink,
     &kretprobe_struct_symlink, &kretprobe_struct_link,
     &kretprobe_struct_rmdir,   &kretprobe_struct_mkdir,
-    &kretprobe_struct_open};
+    &kretprobe_struct_open,    &kretprobe_struct_mknod};
 
 /**
  * @brief Register all the kretprobes of this module.

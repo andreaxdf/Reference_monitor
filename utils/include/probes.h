@@ -2,9 +2,13 @@
 #define PROBES_H
 
 #include <linux/errno.h>
+#include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
+#include <linux/mount.h>
+#include <linux/path.h>
 #include <linux/ptrace.h>
+#include <linux/sched.h>
 
 #include "intrusion_log.h"
 #include "reference_monitor_state.h"

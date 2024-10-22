@@ -6,7 +6,7 @@
 struct reference_monitor {
     state state;
     struct list_head protected_paths;
-    spinlock_t monitor_lock;
+    struct mutex monitor_lock;
 };
 
 static struct reference_monitor ref_monitor;
@@ -16,14 +16,14 @@ void initialize_monitor_state(void) {
 
     INIT_LIST_HEAD(&ref_monitor.protected_paths);
 
-    spin_lock_init(&ref_monitor.monitor_lock);
+    mutex_init(&ref_monitor.monitor_lock);
 }
 
 void print_monitor_state(void) {
     protected_path *entry;
     char *buff, *pathname;
 
-    spin_lock(&ref_monitor.monitor_lock);
+    mutex_lock(&ref_monitor.monitor_lock);
 
     printk("\n");
     printk("%s: Monitor state: %s\n", MODNAME,
@@ -42,7 +42,7 @@ void print_monitor_state(void) {
         free_page((unsigned long)buff);
     }
 
-    spin_unlock(&ref_monitor.monitor_lock);
+    mutex_unlock(&ref_monitor.monitor_lock);
 }
 
 static bool is_monitor_reconfigurable(void) {
@@ -63,12 +63,12 @@ bool is_monitor_active(void) {
 state change_monitor_state(state new_state) {
     state old_state;
 
-    spin_lock(&ref_monitor.monitor_lock);
+    mutex_lock(&ref_monitor.monitor_lock);
 
     old_state = ref_monitor.state;
     ref_monitor.state = new_state;
 
-    spin_unlock(&ref_monitor.monitor_lock);
+    mutex_unlock(&ref_monitor.monitor_lock);
 
     return old_state;
 }
@@ -135,7 +135,7 @@ bool is_path_protected(struct dentry *kern_dentry) {
     struct dentry *curr_dentry = kern_dentry;
     bool ret = false;
 
-    spin_lock(&ref_monitor.monitor_lock);
+    mutex_lock(&ref_monitor.monitor_lock);
 
     do {
         if (__is_dentry_already_protected(curr_dentry)) {
@@ -146,7 +146,7 @@ bool is_path_protected(struct dentry *kern_dentry) {
         curr_dentry = dget_parent(curr_dentry);
     } while (!IS_ROOT(curr_dentry));
 
-    spin_unlock(&ref_monitor.monitor_lock);
+    mutex_unlock(&ref_monitor.monitor_lock);
 
     return ret;
 }
@@ -164,21 +164,21 @@ bool is_path_protected(struct dentry *kern_dentry) {
 int add_protected_path(struct path kern_path) {
     protected_path *new_protected_path;
 
-    spin_lock(&ref_monitor.monitor_lock);
+    mutex_lock(&ref_monitor.monitor_lock);
 
     if (!is_monitor_reconfigurable()) {
-        spin_unlock(&ref_monitor.monitor_lock);
+        mutex_unlock(&ref_monitor.monitor_lock);
         return -2;
     }
 
     if (__is_path_already_protected(&kern_path)) {
-        spin_unlock(&ref_monitor.monitor_lock);
+        mutex_unlock(&ref_monitor.monitor_lock);
         return 1;
     }
 
     new_protected_path = kmalloc(sizeof(protected_path), GFP_KERNEL);
     if (!new_protected_path) {
-        spin_unlock(&ref_monitor.monitor_lock);
+        mutex_unlock(&ref_monitor.monitor_lock);
         return -1;
     }
 
@@ -191,7 +191,7 @@ int add_protected_path(struct path kern_path) {
 
     list_add(&(new_protected_path->list), &ref_monitor.protected_paths);
 
-    spin_unlock(&ref_monitor.monitor_lock);
+    mutex_unlock(&ref_monitor.monitor_lock);
 
     return 0;
 }
@@ -209,10 +209,10 @@ int remove_protected_path(struct path kern_path) {
     protected_path *entry, *tmp;
     int ret = -1;
 
-    spin_lock(&ref_monitor.monitor_lock);
+    mutex_lock(&ref_monitor.monitor_lock);
 
     if (!is_monitor_reconfigurable()) {
-        spin_unlock(&ref_monitor.monitor_lock);
+        mutex_unlock(&ref_monitor.monitor_lock);
         return -2;
     }
 
@@ -234,7 +234,7 @@ int remove_protected_path(struct path kern_path) {
         }
     }
 
-    spin_unlock(&ref_monitor.monitor_lock);
+    mutex_unlock(&ref_monitor.monitor_lock);
 
     return ret;
 }

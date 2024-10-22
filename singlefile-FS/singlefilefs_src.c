@@ -136,7 +136,7 @@ static int singlefilefs_init(void) {
     int ret;
 
     // initilize
-    spin_lock_init(&file_op_lock);
+    mutex_init(&file_op_lock);
 
     // register filesystem
     ret = register_filesystem(&onefilefs_type);
